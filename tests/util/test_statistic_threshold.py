@@ -59,7 +59,7 @@ def failprob_threshold(observed, ns, threshold):
     # posterior on P(y<mlx) is a Beta(below+1,above+1) distribution, call it
     # PB. The posterior probability of "ns" iid samples less than or equal to
     # mlx is the integral over the unit interval of (q**ns)*PB(q,1-q), which is
-    # the given formula:
+    # the integrand of Beta(below+ns+1,above+1), i.e.
     probfail = math.exp(lbeta(below+ns+1,above+1) - lbeta(below+1,above+1))
     return probfail, mlx
 
@@ -89,6 +89,25 @@ def compute_sufficiently_stringent_threshold(generator, ns, threshold):
         probfail, x = failprob_threshold(observed, ns, 0.9*threshold)
         if probfail < threshold:
             return x, probfail, len(observed)
+
+class MultipleTestStatisticFailures(RuntimeError):
+
+    """Raised when a test statistic is too low too many times"""
+
+    def __init__(self, generator, ns, threshold, statistics):
+        self.generator, self.ns, self.threshold = generator, ns, threshold
+        self.statistics = statistics
+
+def test_generator(generator, ns, threshold, probfail):
+    statistics = []
+    for numfailures in range(ns):
+        statistics.append(generator())
+        if statistics[-1] >= threshold:
+            return numfailures
+    raise MultipleTestStatisticFailures(generator, ns, threshold, statistics), \
+        ('%s has been less than %.3g %i times, the probability of which was '
+         ' estimated to happen one time in %.3g') % (
+             generator, threshold, ns, 1/probfail)
 
 def main():
     import argparse
