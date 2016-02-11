@@ -1,8 +1,7 @@
-from scipy import array
-from scipy.integrate import quad
+import scipy
+import scipy.integrate
 from scipy.stats import norm
 from numpy import log, sqrt, exp, inf
-from numpy.random import seed
 
 from util import test_statistic_threshold as tst
 
@@ -15,7 +14,7 @@ def kullback_leibler(post_sample, post_pdf, comp_pdf):
 
     """
     klsamples = [log(post_pdf(x)) - log(comp_pdf(x)) for x in post_sample]
-    klsamples = array(klsamples)
+    klsamples = scipy.array(klsamples)
     # In general the mean and variance of log(P(x)) is not known to be finite,
     # but it will be for any distribution crosscat generates at the moment,
     # because they all have finite entropy.  Hence CLT applies
@@ -24,7 +23,7 @@ def kullback_leibler(post_sample, post_pdf, comp_pdf):
 
 def kullback_leibler_numerical(lpdf1, lpdf2):
     klf = lambda x: exp(lpdf1(x)) * (lpdf1(x) - lpdf2(x))
-    return quad(klf, -inf, inf)
+    return scsipy.integrate.quad(klf, -inf, inf)
 
 
 def kullback_leibler_test_statistic():
@@ -42,7 +41,6 @@ def kullback_leibler_test_statistic():
 
 
 def test_kullback_leibler():
-    seed(tst.SMYTHE_THOMPSON_NUMBER)
     tst.test_generator(kullback_leibler_test_statistic, 6, 4.516e-6, 1.7e-20)
 
 

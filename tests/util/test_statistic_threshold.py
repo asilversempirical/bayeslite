@@ -114,7 +114,7 @@ def test_generator(generator,
                    probfail,
                    seed=SMYTHE_THOMPSON_NUMBER):
     random.seed(seed)
-
+    numpy.random.seed(seed)
     statistics = []
     for numfailures in range(ns):
         statistics.append(generator())
