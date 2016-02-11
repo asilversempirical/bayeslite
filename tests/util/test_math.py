@@ -2,6 +2,7 @@ from scipy import array
 from scipy.integrate import quad
 from scipy.stats import norm
 from numpy import log, sqrt, exp, inf
+from numpy.random import seed
 
 from util import test_statistic_threshold as tst
 
@@ -37,6 +38,7 @@ def kullback_leibler_test_statistic():
 # threshold, for a failure probability of 1.7e-20.
 
 def test_kullback_leibler():
+    seed(tst.SMYTHE_THOMPSON_NUMBER)
     tst.test_generator(kullback_leibler_test_statistic, 6, 4.516e-6, 1.7e-20)
 
 def graph_kullback_leibler_test_statistic():
