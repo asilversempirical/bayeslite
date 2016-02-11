@@ -17,3 +17,4 @@ __pycache__/
 .eggs
 /tests/test_distribution.py
 .#*
+*.pyc
