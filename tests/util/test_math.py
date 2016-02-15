@@ -6,15 +6,15 @@ from numpy import log, sqrt, exp, inf
 from util import test_statistic_threshold as tst
 
 
-def kullback_leibler(post_sample, post_pdf, comp_pdf):
+def kullback_leibler(postsample, postpdf, comppdf):
     """Estimate KL-divergence of sample (a collection of values) w.r.t. known pdf,
     comp_pdf, which returns the density when passed a sample. Return value is
-    (estimated_kl, variance) post_sample is an approximate sample from the
-    distribution approximately represented by post_pdf
+    (estimated_kl, variance), where variance is the estimated sampling variance
+    of estimated_kl. post_sample is an approximate sample from the distribution
+    approximately represented by post_pdf
 
     """
-    klsamples = [log(post_pdf(x)) - log(comp_pdf(x)) for x in post_sample]
-    klsamples = scipy.array(klsamples)
+    klsamples = log(map(postpdf, postsample)) - log(map(comppdf, postsample))
     # In general the mean and variance of log(P(x)) is not known to be finite,
     # but it will be for any distribution crosscat generates at the moment,
     # because they all have finite entropy.  Hence CLT applies
