@@ -41,7 +41,7 @@ def kullback_leibler(postsample, postpdf, comppdf):
 
 def kullback_leibler_numerical(lpdf1, lpdf2):
     klf = lambda x: exp(lpdf1(x)) * (lpdf1(x) - lpdf2(x))
-    return scsipy.integrate.quad(klf, -inf, inf)
+    return scipy.integrate.quad(klf, -inf, inf)
 
 
 def kullback_leibler_test_statistic():
