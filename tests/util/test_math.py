@@ -44,12 +44,12 @@ def kullback_leibler_numerical(lpdf1, lpdf2):
     return scipy.integrate.quad(klf, -inf, inf)
 
 
-def kullback_leibler_test_statistic():
+def kullback_leibler_test_statistic(n=100):
     dist1, dist2 = norm(0, 1), norm(0, 2)
     lpdf1, lpdf2 = dist1.logpdf, dist2.logpdf
     pdf1, pdf2 = dist1.pdf, dist2.pdf
     exact, error = kullback_leibler_numerical(lpdf1, lpdf2)
-    estimate, std = kullback_leibler(dist1.rvs(100), pdf1, pdf2)
+    estimate, std = kullback_leibler(dist1.rvs(n), pdf1, pdf2)
     return norm(estimate, std).sf(exact)
 
 # Ran tst.compute_sufficiently_stringent_threshold(
