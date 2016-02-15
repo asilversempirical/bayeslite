@@ -17,7 +17,25 @@ def kullback_leibler(postsample, postpdf, comppdf):
     klsamples = log(map(postpdf, postsample)) - log(map(comppdf, postsample))
     # In general the mean and variance of log(P(x)) is not known to be finite,
     # but it will be for any distribution crosscat generates at the moment,
-    # because they all have finite entropy.  Hence CLT applies
+    # because they all have finite entropy.  Hence CLT applies.
+
+    # Comments in response to
+    # https://github.com/alxempirical/bayeslite/pull/1#discussion_r52820300 :
+    # Computing these formulae using logsumexp would not afford any numerical
+    # benefit, because overflows are extremely unlikely, and for any reasonable
+    # sample size an underflow would imply that the KL divergence is so small
+    # as to be effectively zero. The dynamic range of a float64 is from
+    # approximately 1e-323 to 1e308, which is a difference in logs of about
+    # 1500. Hence the largest value we could expect from the variance is about
+    # 2.2e6, and it would take more values than AWS could store to oveflow the
+    # sum.
+
+    # There is a risk of precision loss due to rounding error, because this is
+    # a cancelling sum, but logsumexp doesn't mitigate that risk. Assuming
+    # float64's, catastrophic cancellation in the paired log terms would imply
+    # a pointwise difference in probability less than 1e-8, and again we would
+    # need an absurdly large number of terms for that to add up to anything
+    # meaningful.
     return klsamples.mean(), klsamples.var() / sqrt(len(klsamples))
 
 
