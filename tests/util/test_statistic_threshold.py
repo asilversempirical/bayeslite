@@ -36,11 +36,11 @@ def failprob_threshold(observed, ns, threshold):
 
     # Type checking
     if not all(isinstance(d, numbers.Number) for d in observed):
-        raise ValueError, 'observed is not a list of numeric values'
+        raise ValueError('observed is not a list of numeric values')
     if (threshold > 1) or (threshold < 0):
-        raise ValueError, 'threshold is not a probability'
+        raise ValueError('threshold is not a probability')
     if (round(ns) != ns) or (ns < 1):
-        raise ValueError, 'ns is not a natural number'
+        raise ValueError('ns is not a natural number')
 
     # Compute the quantile which should be tested for in each subtest
     observed = sorted(observed)
@@ -53,7 +53,7 @@ def failprob_threshold(observed, ns, threshold):
         # mass then the key assumption of this approach (i.e. that P(y<mlx) is
         # approximately sub_threshold) has broken down and a different
         # threshold should be chosen.
-        raise ValueError, 'Requested quantile may lie in Dirac delta fn'
+        raise ValueError('Requested quantile may lie in Dirac delta fn')
 
     # Compute the observed counts below and above the threshold mlx
     below, above = max(0, mlxidx - 1), len(observed) - mlxidx - 1
