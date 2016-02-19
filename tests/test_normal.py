@@ -26,6 +26,12 @@ class Normal(TestDistribution):
     def logpdf(self, x):
         return self.n.logpdf(x)
 
+    def __getstate__(self):
+        return self.n.mean(), self.n.var()
+
+    def __setstate__(self, state):
+        self.__init__(*state)
+
 
 class NormalInvGammaPrior(TestDistribution):
 
@@ -91,6 +97,12 @@ class NormalInvGammaPrior(TestDistribution):
                      log(self.n0 / posterior.n0) / 2,
                      -len(x) * log(2 * pi) / 2.])
 
+    def __getstate__(self):
+        return self.mumu, self.sigshape, self.sigrate, self.n0
+
+    def __setstate__(self, state):
+        self.__init__(*state)
+
 
 def normal_prior_check_statistic(prngstate):
     """Test statistic which sanity checks NormalInvGammaPrior by verifying that
@@ -143,8 +155,8 @@ def fancy_kullback_leibler_graph((x, X, Y, Z, kl_divs, number_doublings, n,
     """Display the convergence of the posterior of a NormalInvGammaPrior as it
     gets increasingly large samples from a given normal distribution.
 
-    Not a very
-    clear visualization for others -- too much information, I suppose.
+    Not a very clear visualization for others -- too much information, I
+    suppose.
 
     """
     import matplotlib.pyplot as plt
@@ -184,21 +196,20 @@ def kullback_leibler_graph((x, X, Y, Z, kl_divs, number_doublings, n,
 
     """
     import matplotlib.pyplot as plt
+    plt.ion()
     plt.clf()
     samplesizes = 2**scipy.arange(number_doublings)
     plt.plot(samplesizes, 1 / abs(kl_divs),
-             label='1/KL(ppredictive||N(0,1))')
+             label=('$1/D_{KL}(N(0,1) \| P(x|\{x_i\}_{i=1}^{n}\sim N(0,1), '
+                    'NormalInvGammaPrior(0,1,1,1))$'))
     plt.plot(samplesizes, [exp(p.logpdf(rvs.norm(0, 1))) for p in posteriors],
              label='P(N(0,1)|observed sample)')
     plt.xscale('log')
     plt.yscale('log')
-    plt.xlabel('Size of sample used to calculate posterior distribution')
+    plt.xlabel('Size of sample used to calculate posterior distribution ($n$)')
     plt.ylabel('Posterior density of N(0,1) and 1 / KL(posterior||N(0,1))')
     plt.legend(loc='lower right')
     plt.title('Converging posterior of NormalInvGammaPrior as sample size '
               'increases')
+    plt.gcf().set_size_inches(15, 10)
     plt.show()
-
-# data = os.data = kullback_leibler_normal(16)
-# fancy_kullback_leibler_graph(data)
-# kullback_leibler_graph(data)
