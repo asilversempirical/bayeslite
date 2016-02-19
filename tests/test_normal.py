@@ -1,7 +1,8 @@
 """Test code for normal distribution."""
 
 from numbers import Number
-from numpy import sqrt, pi, log, abs
+import numpy as np
+from numpy import sqrt, pi, log, abs, exp
 import scipy
 from scipy.special import gammaln
 from util.entropy import rvs, seeded, random_state
@@ -112,57 +113,92 @@ ntest_thresh = 1.30688e-3
 def test_normal_prior():
     tst.check_generator(ntest_statistic, 6, ntest_thresh, 1e-15)
 
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-plt.close('all')
-import numpy as np
 
-
-def kullback_leibler_normal():
-    """Display the convergence of the posterior of a NormalInvGammaPrior as it gets
-    increasingly large samples from a given normal distribution. Not a very
-    clear visualization for others -- too much information, I suppose.
-
-    Since all of the pdfs are roughly normal, it would be better to display
-    summary statistics of them: the pdf values of actual mean and variance
-    seems like a reasonable thing...
-
-    """
-    kl_divs = []
+def kullback_leibler_normal(number_doublings):
+    """Get the data for a visualization showing the convergence of the
+    NormalInvGammaPrior posteriors as the sample size converges."""
+    kl_divs, posteriors = [], []
     prngstate = random_state(17)
     mu, var = 0, 1
     n = Normal(mu, var)
     sample = list(n.simulate(1, prngstate=prngstate))
-    number_doublings = 8
     samplesizes = 2**scipy.arange(0, number_doublings, 1)
     lowbound, highbound = -5, 5
     x = np.linspace(lowbound, highbound, 100)
     X, Y = np.meshgrid(x, log(samplesizes) / log(2))
     Z = scipy.zeros(X.shape)
+    for sidx, samplesize in enumerate(samplesizes):
+        assert len(sample) == samplesize
+        prior = NormalInvGammaPrior(mu, 1. / var, 1, 1)
+        posteriors.append(prior.posterior(sample))
+        posterior = posteriors[-1].predictive_logpdf
+        kl_divs.append(kullback_leibler(sample, posterior, n.logpdf)[0])
+        Z[sidx, :] = np.exp(map(posterior, x))
+        sample.extend(list(n.simulate(len(sample), prngstate=prngstate)))
+    return x, X, Y, Z, kl_divs, number_doublings, n, lowbound, posteriors
+
+
+def fancy_kullback_leibler_graph((x, X, Y, Z, kl_divs, number_doublings, n,
+                                  lowbound, posteriors)):
+    """Display the convergence of the posterior of a NormalInvGammaPrior as it
+    gets increasingly large samples from a given normal distribution.
+
+    Not a very
+    clear visualization for others -- too much information, I suppose.
+
+    """
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    assert Axes3D  # silence flake8
+
     fig = plt.figure(figsize=(20, 15))
     ax = fig.add_subplot(111, projection='3d')
     # Plot the pdf of the actual distribution, at the back of the image
     ax.plot(x, len(x) * [number_doublings],
             np.exp(map(n.logpdf, x)), lw=5, color='r',
             label='Actual distribution')
-    base = 1000000000
-    ax.set_ylabel('Slices are posterior distributions given sample of specified size')
+    logbase = round((max(-log(abs(kl_divs))) / Z.max()) / log(10)) + 1
+    base = int(10**logbase)
+    ax.set_ylabel(
+        'Slices are posterior distributions given sample of specified size')
     ax.set_xlabel('Probability space (X)')
-    ax.set_zlabel('Probability density at X / $\log_{%i}$(|KL divergence|)' % base)
-    for sidx, samplesize in enumerate(samplesizes):
-        assert len(sample) == samplesize
-        prior = NormalInvGammaPrior(mu, 1. / var, 1, 1)
-        posterior = prior.posterior(sample).predictive_logpdf
-        kl_divs.append(kullback_leibler(sample, posterior, n.logpdf)[0])
-        Z[sidx, :] = np.exp(map(posterior, x))
-        sample.extend(list(n.simulate(len(sample), prngstate=prngstate)))
+    ax.set_zlabel(
+        'Probability density at X / $\log_{%i}$(|KL divergence|)' % base)
     ax.plot_wireframe(X, Y, Z)
     ax.set_yticklabels(['$2^{%i}$' % s for s in ax.get_yticks()])
-    ax.plot(number_doublings*[lowbound-1], xrange(number_doublings),
-            -log(abs(kl_divs))/log(base), lw=5, color='b',
+    ax.plot(number_doublings * [lowbound - 1], xrange(number_doublings),
+            -log(abs(kl_divs)) / log(base), lw=5, color='b',
             label='$-\log_{%i}$(|KL divergence|)' % base)
     plt.legend()
     plt.title('Convergence of NormalInvGammaPrior with increasing sample size')
     plt.ion()
     plt.show()
     return ax
+
+
+def kullback_leibler_graph((x, X, Y, Z, kl_divs, number_doublings, n,
+                            lowbound, posteriors)):
+    """Since all of the pdfs are roughly normal, an improvement on the fancy graph
+    might be to display summary statistics of them: the pdf values of actual
+    mean and variance seems like a reasonable thing, along with the
+
+    """
+    import matplotlib.pyplot as plt
+    plt.clf()
+    samplesizes = 2**scipy.arange(number_doublings)
+    plt.plot(samplesizes, 1 / abs(kl_divs),
+             label='1/KL(ppredictive||N(0,1))')
+    plt.plot(samplesizes, [exp(p.logpdf(rvs.norm(0, 1))) for p in posteriors],
+             label='P(N(0,1)|observed sample)')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlabel('Size of sample used to calculate posterior distribution')
+    plt.ylabel('Posterior density of N(0,1) and 1 / KL(posterior||N(0,1))')
+    plt.legend(loc='lower right')
+    plt.title('Converging posterior of NormalInvGammaPrior as sample size '
+              'increases')
+    plt.show()
+
+# data = os.data = kullback_leibler_normal(16)
+# fancy_kullback_leibler_graph(data)
+# kullback_leibler_graph(data)
