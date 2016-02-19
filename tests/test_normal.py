@@ -10,7 +10,7 @@ from util.entropy import rvs, seeded, random_state
 from test_distribution import TestDistribution
 from util import test_statistic_threshold as tst
 from util.test_arithmetic import safe_mean, safe_product, safe_divide, fsum
-from util.test_math import kullback_leibler
+from util.test_math import kullback_leibler, kernel_two_sample_test
 
 
 class Normal(TestDistribution):
@@ -18,6 +18,7 @@ class Normal(TestDistribution):
     """Normal distribution."""
 
     def __init__(self, mu, var):
+        self.mu, self.var = mu, var
         self.n = rvs.norm(mu, sqrt(var))
 
     def simulate(self, n=1, prngstate=None):
@@ -54,14 +55,13 @@ class NormalInvGammaPrior(TestDistribution):
 
     def simulate(self, n=1, prngstate=None):
         sigmas = self.sigma.rvs(n, random_state=prngstate)
-        mus = [self.mudist(s).rvs(n, random_state=prngstate) for s in sigmas]
-        return [rvs.norm(mu, sqrt(sigma), random_state=prngstate)
-                for mu, sigma in zip(mus, sigmas)]
+        mus = [self.mudist(s).simulate(prngstate=prngstate) for s in sigmas]
+        return [Normal(mu, sigma) for mu, sigma in zip(mus, sigmas)]
 
     def logpdf(self, n):
-        if n.dist != scipy.stats.norm(0, 1).dist:
-            ValueError('Argument should be scipy.stats.norm instance')
-            mu, sigma = n.mean(), n.var()
+        if not isinstance(n, Normal):
+            ValueError('Argument should be Normal instance')
+        mu, sigma = n.mu, n.var
         return self.sigma.logpdf(sigma) + self.mudist(sigma).logpdf(mu)
 
     def posterior(self, data):
@@ -98,6 +98,9 @@ class NormalInvGammaPrior(TestDistribution):
                      -len(x) * log(2 * pi) / 2.])
 
     def __getstate__(self):
+        # FIXME: This is dangerous... Is there a way to read this out of the
+        # __init__ signature, e.g. with inspect.getargspec? Could have a test
+        # which roundtrips every TestDistribution?
         return self.mumu, self.sigshape, self.sigrate, self.n0
 
     def __setstate__(self, state):
@@ -129,7 +132,7 @@ def test_normal_prior():
 def kullback_leibler_normal(number_doublings):
     """Get the data for a visualization showing the convergence of the
     NormalInvGammaPrior posteriors as the sample size converges."""
-    kl_divs, posteriors = [], []
+    kl_divs, mmds, posteriors = [], [], []
     prngstate = random_state(17)
     mu, var = 0, 1
     n = Normal(mu, var)
@@ -145,13 +148,18 @@ def kullback_leibler_normal(number_doublings):
         posteriors.append(prior.posterior(sample))
         posterior = posteriors[-1].predictive_logpdf
         kl_divs.append(kullback_leibler(sample, posterior, n.logpdf)[0])
+        post_sample = posteriors[-1].simulate(samplesize, prngstate=prngstate)
+        px_sample = [s.simulate(prngstate=prngstate) for s in post_sample]
+        mmd = kernel_two_sample_test(
+            scipy.array(px_sample), scipy.array(sample, ndmin=2).transpose())
+        mmds.append(mmd)
         Z[sidx, :] = np.exp(map(posterior, x))
         sample.extend(list(n.simulate(len(sample), prngstate=prngstate)))
-    return x, X, Y, Z, kl_divs, number_doublings, n, lowbound, posteriors
+    return x, X, Y, Z, kl_divs, mmds, number_doublings, n, lowbound, posteriors
 
 
-def fancy_kullback_leibler_graph((x, X, Y, Z, kl_divs, number_doublings, n,
-                                  lowbound, posteriors)):
+def fancy_kullback_leibler_graph((x, X, Y, Z, kl_divs, mmds, number_doublings,
+                                  n, lowbound, posteriors)):
     """Display the convergence of the posterior of a NormalInvGammaPrior as it
     gets increasingly large samples from a given normal distribution.
 
@@ -160,6 +168,7 @@ def fancy_kullback_leibler_graph((x, X, Y, Z, kl_divs, number_doublings, n,
 
     """
     import matplotlib.pyplot as plt
+    # Although unused, this import registers the 3d projection with mpl
     from mpl_toolkits.mplot3d import Axes3D
     assert Axes3D  # silence flake8
 
@@ -172,7 +181,7 @@ def fancy_kullback_leibler_graph((x, X, Y, Z, kl_divs, number_doublings, n,
     logbase = round((max(-log(abs(kl_divs))) / Z.max()) / log(10)) + 1
     base = int(10**logbase)
     ax.set_ylabel(
-        'Slices are posterior distributions given sample of specified size')
+        'Slices are posterior distributions given sample of specified s\ize')
     ax.set_xlabel('Probability space (X)')
     ax.set_zlabel(
         'Probability density at X / $\log_{%i}$(|KL divergence|)' % base)
@@ -188,11 +197,11 @@ def fancy_kullback_leibler_graph((x, X, Y, Z, kl_divs, number_doublings, n,
     return ax
 
 
-def kullback_leibler_graph((x, X, Y, Z, kl_divs, number_doublings, n,
+def kullback_leibler_graph((x, X, Y, Z, kl_divs, mmds, number_doublings, n,
                             lowbound, posteriors)):
     """Since all of the pdfs are roughly normal, an improvement on the fancy graph
     might be to display summary statistics of them: the pdf values of actual
-    mean and variance seems like a reasonable thing, along with the
+    mean and variance seems like a reasonable thing, along with KL divergence.
 
     """
     import matplotlib.pyplot as plt
@@ -202,8 +211,9 @@ def kullback_leibler_graph((x, X, Y, Z, kl_divs, number_doublings, n,
     plt.plot(samplesizes, 1 / abs(kl_divs),
              label=('$1/D_{KL}(N(0,1) \| P(x|\{x_i\}_{i=1}^{n}\sim N(0,1), '
                     'NormalInvGammaPrior(0,1,1,1))$'))
-    plt.plot(samplesizes, [exp(p.logpdf(rvs.norm(0, 1))) for p in posteriors],
+    plt.plot(samplesizes, [exp(p.logpdf(Normal(0, 1))) for p in posteriors],
              label='P(N(0,1)|observed sample)')
+    plt.plot(samplesizes, -log(mmds), label='mmd')
     plt.xscale('log')
     plt.yscale('log')
     plt.xlabel('Size of sample used to calculate posterior distribution ($n$)')
