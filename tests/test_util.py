@@ -22,8 +22,6 @@ from bayeslite.math_util import logmeanexp
 from bayeslite.math_util import logsumexp
 from bayeslite.util import cursor_value
 
-SMYTHE_THOMPSON_NUMBER = 17
-
 def test_logsumexp():
     assert logsumexp([-1000.]) == -1000.
     assert logsumexp([-1000., -1000.]) == -1000. + math.log(2.)
