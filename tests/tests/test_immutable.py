@@ -16,11 +16,29 @@ class ImmutableTest(immutable.Immutable):
     def nonmutating_method(self, d):
         return self.a + self.k
 
-    def __iadd__(self, o):
-        self.a += o
-
-    def __getitem__(self, k):
+    def __getitem__(self, item):
         return 9
+
+    def geta(self):
+        return self.a
+
+    def seta(self, v):
+        self.a = v
+
+    def dela(self):
+        del self.a
+
+    ab = property(geta, seta, dela, 'the a property')
+
+
+def meth(*args, **kw):
+    """do nothing."""
+
+for m in immutable.protected_methods:
+    # Overwrite everything but getattr and settatr, which we need to initialize
+    # the class.
+    if m not in '__setattr__ __getattr__'.split():
+        setattr(ImmutableTest, m, meth)
 
 
 def check_raised(f, E, m):
@@ -63,7 +81,17 @@ def test_immutable(C=ImmutableTest):
     def delslice():
         del i[5:6]
     check_raised(delslice, TypeError, 'does not support slice deletion')
-    checked_operators = set()
+
+    def setprop():
+        i.ab = 7
+    check_raised(setprop, TypeError, 'does not support property assignment')
+
+    def delprop():
+        del i.ab
+    check_raised(setprop, TypeError, 'does not support property deletion')
+    checked_operators = set(['__delitem__', '__setitem__', '__setattr__',
+                             '__delattr__', '__setslice__', '__delslice__',
+                             '__set__', '__delete__'])
     operators = '''mul:* div:/ floordiv:// mod:% pow:** lshift:<< rshift:>>
     and:& xor:^ or:| add:+ sub:-'''.split()
     operators = dict(o.split(':') for o in operators)
@@ -71,19 +99,41 @@ def test_immutable(C=ImmutableTest):
         def f():
             exec ('i %s= 1' % op) in {'i': i}
         check_raised(f, TypeError, 'does not support in-place "%s"' % name)
-        checked_operators.add(name)
-    for op in 'truediv:1:truediv concat:[]:add repeat:1:mul'.split():
+        checked_operators.add('__i%s__' % name)
+    for op in 'truediv:1:truediv concat:[]:concatenated repeat:1:mul'.split():
         op, val, ename = op.split(':')
         val = eval(val)
 
         def f():
             getattr(operator, '__i%s__' % op)(i, val)
         check_raised(f, TypeError, 'does not support in-place "%s"' % ename)
-        checked_operators.add(op)
-        all_operators = set(immutable.Immutable.ameths.split())
+        checked_operators.add('__i%s__' % op)
+    all_operators = set(immutable.protected_methods)
     assert checked_operators == all_operators, \
         'Checked all operators?  %s' % (all_operators - checked_operators)
     assert i.__getstate__() == i.__initial_values__
     assert loads(dumps(i)) == i, 'Does pickling invert?'
     check_raised(lambda: ImmutableTest({}, 2, 3), TypeError,
                  'initialized with unhashable arguments')
+
+
+def test_deepfreeze():
+    from frozendict import frozendict
+    rv = immutable.deepfreeze(((1,), {}))
+    assert rv == ((1,), frozendict({})), \
+        ('Got %r, expected ((1,), frozendict())' % (rv,))
+
+
+class DEBUGTest(ImmutableTest):
+
+    __DEBUG__ = False
+
+
+def test_debug():
+    i = DEBUGTest(1, 2, 3, k=5)
+    i.a = 1  # Check that __DEBUG__==False disables protections
+
+if __name__ == '__main__':
+    test_immutable()
+    test_deepfreeze()
+    test_debug()
