@@ -40,8 +40,8 @@ else:
     raise RuntimeError('Positive control failed')
 
 
-def test_immutable():
-    i = ImmutableTest(1, 2, 3)
+def test_immutable(C=ImmutableTest):
+    i = C(1, 2, 3)
     i.nonmutating_method(6)  # Should run without error
     check_raised(partial(i.mutating_method, 5),
                  TypeError, 'does not support attribute assignment')

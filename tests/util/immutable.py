@@ -1,11 +1,9 @@
-# https://blog.ionelmc.ro/2015/02/09/understanding-python-metaclasses/
-
 """Light protection against accidentally mutating an instance.
 
 This is where you usually explain what the module is for, but let's be
 frank: Immutability doesn't change a thing. :-)
 
-Use this by setting the metaclass of a class you want to Immutable:
+Use this by inheriting from the Immutable class:
 
 class MyClass:
    __metaclass__ = Immutable
@@ -17,30 +15,37 @@ This will prevent accidental mutation of an instance, though if you really need
 to mutate something, e.g. for debugging during development you can still do
 it... E.g. object.__setattr__(myinstance, aname, avalue) will usually do what
 myinstance.aname=avalue intends. If you do that in finished code you'll deserve
-exactly whatever confusion you get, though, and you probably won't like it.
+exactly whatever confusion you get, though, and you probably won't like it
+eventually.
 
 It also doesn't stop you from assigning mutable attributes during instance
 contruction, and then changing those attributes. Just... don't do that. It does
 at least check for you that none of the arguments you passed to the class are
 mutable, by computing their hash.
 
-This class works by over-riding the instance construction procedure completely
--- currently, if your class C defines __new__ and has Immutable as
-__metaclass__, __new__ will not be called (but this would be easy to correct.)
+This class works by over-riding the instance construction procedure completely.
+For background on how it works, see
+https://blog.ionelmc.ro/2015/02/09/understanding-python-metaclasses/
 
-When C(*a, **kw) is called, the __call__ method below is invoked. It checks
-whether the instance has already been instantiated, and if so, passes its
-arguments on to C.__call__. If not, it assumes a new instance is being created
-and passes its arguments on to C.__init__. On return from C.__init__, it sets a
-flag to indicate that the class is now immutable. Any special methods which
-would ordinarily be used to mutate a class (e.g., __setattr__) are disabled by
-that flag.
+In brief, given an Immutable subclass C, when C(*a, **kw) is called, the
+__call__ method below is invoked. __call__ overwrites C's mutating special
+methods with wrappers which check whether a flag has been set to indicate that
+the class is initialized and no further mutation should be permitted. It then
+obtains an instance c from C.__new__(*a, **kw). In c.__initial_values__, it
+records the arguments (a, kw), and checks that these are hashable (and
+therefore, hopefully, immutable.) Then it calls C.__init__(*a, **new) for
+standard initialization. Finally, it sets a flag to indicate that
+initialization is complete. Any special methods which would ordinarily be used
+to mutate a class (e.g., __setattr__) are disabled by that flag.
 
-Since instances are assumed to be immutable, pickling and  unpickling are
+Since instances are assumed to be immutable, pickling and unpickling are done
+by simply storing __initial_values__, and calling __init__ on that when
+restoring. Equality is also tested by comparing __initial_values__.
 
 """
 
 from functools import wraps, partial
+
 
 class MetaImmutable(type):
 
@@ -64,11 +69,10 @@ class MetaImmutable(type):
 
     @staticmethod
     def protected_special_method(klass, mname, engname):
-        """Wrap the method mname of klass so that it will fail when called on a klass
-        instance which has already been initialized, with error message
-        including engname as the English description of the method semantics.
-
-        """
+        """Wrap the method mname of klass so that it will fail when called on a
+        klass instance which has already been initialized, with error message
+        including engname as the English description of the method
+        semantics."""
 
         def method(self, *args, **kwargs):
             if not getattr(self, '__initialized__', False):
@@ -86,13 +90,14 @@ class MetaImmutable(type):
         return method
 
     def __call__(klass, *args, **kwargs):
-        self = klass.__new__(klass)
         # Protect all mutating special methods
         protect = partial(klass.protected_special_method, klass)
         for mname, engname in klass.protected_methods.iteritems():
             mname = '__%s__' % mname
             method = protect(mname, engname)
             setattr(klass, mname, method)
+        # Create the class instance
+        self = klass.__new__(klass)
         # Record the initial values and check they're hashable
         klass.__initial_values__ = (args, tuple(kwargs.iteritems()))
         try:
@@ -111,16 +116,20 @@ class MetaImmutable(type):
         self.__initialized__ = True
         return self
 
+
 class NonObject:
-    "Something nothing else should be equal to"
+    """Something nothing else should be equal to."""
+
 
 class Immutable(object):
 
     __metaclass__ = MetaImmutable
 
     def __getstate__(self):
-        """Get initial state for pickling... assumes the class has not been mutated
-        since initialization. (So don't do that.)
+        """Get initial state for pickling...
+
+        assumes the class has not been mutated since initialization. (So
+        don't do that.)
 
         """
         return self.__initial_values__
