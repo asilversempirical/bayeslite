@@ -1,4 +1,3 @@
-from cPickle import dumps, loads
 from scipy.stats import norm
 
 from distributions.distribution import TestDistribution
@@ -42,3 +41,7 @@ def test_threading_enforcement():
             'simulate')
     else:
         raise RuntimeError('Failed to raise error about prngstate')
+
+def main():
+    test_immutability()
+    test_threading_enforcement()
