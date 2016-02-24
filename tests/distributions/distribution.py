@@ -43,10 +43,13 @@ class TestDistribution(Immutable, DistributionGpm):
             return func(*args, **kwrds)
 
         return wrapped
-<<<<<<< variant A
+<<<<<<< 701b847c6da89cd5a85fa3949b8f2e003727f13f
 
     @staticmethod
     def init_wrapper(self, ):
         pass
+<<<<<<< 701b847c6da89cd5a85fa3949b8f2e003727f13f
 >>>>>>> variant B
 ======= end
+=======
+>>>>>>> Reorganize file layout
