@@ -55,10 +55,8 @@ unequal = UnEqual()
 
 class _Frozen:
 
-    """Immutable wrapper for arbitrary object.
-
-    Don't use this directly, use deepfreeze. This only makes the top
-    level references immutable.
+    """Immutable wrapper for arbitrary object. Don't use this directly, use
+    deepfreeze. This only makes the top level references immutable.
 
     """
 
@@ -85,11 +83,8 @@ frozen_types += (_Frozen,)
 
 
 def _freeze(o):
-    """Freeze the top level references of o if it is a collection.
-
-    Don't use this directly, use deepfreeze.
-
-    """
+    """Freeze the top level references of o if it is a collection. Don't use this
+    directly, use deepfreeze."""
     if isinstance(o, frozen_types):
         return o
     if isinstance(o, collections.Mapping):
