@@ -1,9 +1,9 @@
 """Utilities for wrapping python objects with immutable proxies.
 
-The main entry point is deepfreeze, which will walk down an object and wrap
-everything in it with a proxy which does not allow mutating special methods. Do
-not use _freeze or _Frozen directly. Their return values can contain mutable
-attributes.
+The main entry point is deepfreeze, which will walk down an object and
+wrap everything in it with a proxy which does not allow mutating special
+methods. Do not use _freeze or _Frozen directly. Their return values can
+contain mutable attributes.
 
 """
 
@@ -43,14 +43,22 @@ frozen_types.update((Number, basestring, buffer, memoryview, slice,
 frozen_types = tuple(frozen_types)  # Needs to be tuple for isinstance usage
 
 
-class UnusedObject:
-    """Only use this as a placeholder which is not __eq__ to anything."""
+class UnEqual:
+
+    """Only use this as a placeholder which is not __eq__ to anything else."""
+
+    def __eq__(klass, other):
+        return False
+
+unequal = UnEqual()
 
 
 class _Frozen:
 
-    """Immutable wrapper for arbitrary object. Don't use this directly, use
-    deepfreeze. This only makes the top level references immutable.
+    """Immutable wrapper for arbitrary object.
+
+    Don't use this directly, use deepfreeze. This only makes the top
+    level references immutable.
 
     """
 
@@ -68,7 +76,7 @@ class _Frozen:
         return hash(self._value)
 
     def __eq__(self, other):
-        return self._value == getattr(other, '_value', UnusedObject)
+        return self._value == getattr(other, '_value', unequal)
 
     def __call__(self, *args, **kw):
         return _Frozen(self._value(*args, **kw))
@@ -77,8 +85,11 @@ frozen_types += (_Frozen,)
 
 
 def _freeze(o):
-    """Freeze the top level references of o if it is a collection. Don't use this
-    directly, use deepfreeze."""
+    """Freeze the top level references of o if it is a collection.
+
+    Don't use this directly, use deepfreeze.
+
+    """
     if isinstance(o, frozen_types):
         return o
     if isinstance(o, collections.Mapping):
@@ -96,8 +107,10 @@ LOGFREEZE = False
 
 def deepfreeze(o, memo=None):
     """Walk into all references reachable from o, and wrap those references in
-    immutable proxies. The return value is something which ought to be hard to
-    accidentally mutate, though you'll be able to if you insist.
+    immutable proxies.
+
+    The return value is something which ought to be hard to accidentally
+    mutate, though you'll be able to if you insist.
 
     """
     if LOGFREEZE:
@@ -119,7 +132,8 @@ def deepfreeze(o, memo=None):
     if hasattr(o, '__dict__'):
         # Freeze all attributes. Can't freeze the dict, unfortunately, but it
         # will be returned frozen by _Frozen.__getattribute__
-        o.__dict__ = dict((k, f(v)) for k, v in o.__dict__.iteritems())
+        for k, v in o.__dict__.iteritems():
+            o.__dict__[k] = f(v)
     memo[_id] = _freeze(o)
     if LOGFREEZE:
         logging.debug('Exiting deepfreeze: ' + repr((o, memo)))

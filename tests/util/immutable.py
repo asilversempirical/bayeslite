@@ -52,7 +52,8 @@ from frozendict import frozendict
 import logging
 
 from util import freeze
-from util.freeze import deepfreeze, protected_methods, UnusedObject
+from util.freeze import deepfreeze, protected_methods, unequal
+
 
 def wraps(of, wf):
     """Assign useful metadata from function 'of' to wrapper wf."""
@@ -194,7 +195,7 @@ class Immutable(object):
 
     def __eq__(self, other):
         return self.__initial_values__ == getattr(other, '__initial_values__',
-                                                  UnusedObject)
+                                                  unequal)
 
 # Register this as a type which does not need further freezing by
 # freeze.deepfreeze.
