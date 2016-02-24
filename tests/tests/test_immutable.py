@@ -1,4 +1,5 @@
 from cPickle import loads, dumps
+from frozendict import frozendict
 from functools import partial
 import operator
 
@@ -31,16 +32,6 @@ class ImmutableTest(immutable.Immutable):
     ab = property(geta, seta, dela, 'the a property')
 
 
-def meth(*args, **kw):
-    """do nothing."""
-
-for m in immutable.protected_methods:
-    # Overwrite everything but getattr and settatr, which we need to initialize
-    # the class.
-    if m not in '__setattr__ __getattr__'.split():
-        setattr(ImmutableTest, m, meth)
-
-
 def check_raised(f, E, m):
     try:
         f()
@@ -48,11 +39,13 @@ def check_raised(f, E, m):
         strargs = (a for a in e.args if isinstance(a, basestring))
         assert any(m in a for a in strargs), \
             ('Calling context should have raised %r with message '
-             'containing %s, instead raised %s' % (E, m, e))
+             'containing "%s", instead raised "%s"' % (E, m, e))
+    else:
+        raise RuntimeError('Failed to raise %s(%%%s%%)' % (E.__name__, m))
 
 try:
-    check_raised(lambda: 1 / 0., TypeError, 'anoetu')
-except ZeroDivisionError:
+    check_raised(lambda: 1 / 0., ZeroDivisionError, 'anoetu')
+except AssertionError:
     """This is the correct path."""
 else:
     raise RuntimeError('Positive control failed')
@@ -84,11 +77,11 @@ def test_immutable(C=ImmutableTest):
 
     def setprop():
         i.ab = 7
-    check_raised(setprop, TypeError, 'does not support property assignment')
+    check_raised(setprop, TypeError, 'does not support attribute assignment')
 
     def delprop():
         del i.ab
-    check_raised(setprop, TypeError, 'does not support property deletion')
+    check_raised(delprop, TypeError, 'does not support attribute deletion')
     checked_operators = set(['__delitem__', '__setitem__', '__setattr__',
                              '__delattr__', '__setslice__', '__delslice__',
                              '__set__', '__delete__'])
@@ -100,7 +93,7 @@ def test_immutable(C=ImmutableTest):
             exec ('i %s= 1' % op) in {'i': i}
         check_raised(f, TypeError, 'does not support in-place "%s"' % name)
         checked_operators.add('__i%s__' % name)
-    for op in 'truediv:1:truediv concat:[]:concatenated repeat:1:mul'.split():
+    for op in 'truediv:1:truediv concat:[]:add repeat:1:mul'.split():
         op, val, ename = op.split(':')
         val = eval(val)
 
@@ -113,8 +106,9 @@ def test_immutable(C=ImmutableTest):
         'Checked all operators?  %s' % (all_operators - checked_operators)
     assert i.__getstate__() == i.__initial_values__
     assert loads(dumps(i)) == i, 'Does pickling invert?'
-    check_raised(lambda: ImmutableTest({}, 2, 3), TypeError,
-                 'initialized with unhashable arguments')
+    hash(ImmutableTest({}, 2, 3))
+    assert isinstance(i.__dict__, frozendict), \
+        'Is __dict__ being frozen?'
 
 
 def test_deepfreeze():
@@ -133,7 +127,7 @@ def test_debug():
     i = DEBUGTest(1, 2, 3, k=5)
     i.a = 1  # Check that __DEBUG__==False disables protections
 
-if __name__ == '__main__':
+def main():
     test_immutable()
     test_deepfreeze()
     test_debug()
