@@ -87,6 +87,10 @@ class BayesDB(object):
         self.version = version
         self.compatible = compatible
         self.connect()
+        self.set_entropy(seed)
+
+    def set_entropy(self, seed):
+        "Seed the random number generators from seed"
         if seed is None:
             seed = struct.pack('<QQQQ', 0, 0, 0, 0)
         self._prng = weakprng.weakprng(seed)
