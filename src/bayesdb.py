@@ -77,7 +77,6 @@ class BayesDB(object):
         if pathname is None:
             pathname = ":memory:"
         self.pathname = pathname
-        self._sqlite3 = apsw.Connection(pathname)
         self.txn_depth = 0
         self.metamodels = {}
         self.tracer = None
@@ -85,6 +84,9 @@ class BayesDB(object):
         self.cache = None
         self.temptable = 0
         self.qid = 0
+        self.version = version
+        self.compatible = compatible
+        self.connect()
         if seed is None:
             seed = struct.pack('<QQQQ', 0, 0, 0, 0)
         self._prng = weakprng.weakprng(seed)
@@ -92,10 +94,14 @@ class BayesDB(object):
         self._py_prng = random.Random(pyrseed)
         nprseed = [self._prng.weakrandom32() for _ in range(4)]
         self._np_prng = numpy.random.RandomState(nprseed)
-        schema.bayesdb_install_schema(self, version=version,
-            compatible=compatible)
-        bqlfn.bayesdb_install_bql(self._sqlite3, self)
 
+    def connect(self):
+        "Connect to database"
+        self._sqlite3 = apsw.Connection(self.pathname)
+        # Load bayesdb schema into database, if necessary
+        schema.bayesdb_install_schema(
+            self, version=self.version, compatible=self.compatible)
+        bqlfn.bayesdb_install_bql(self._sqlite3, self)
         # Cache an empty cursor for convenience.
         empty_cursor = self._sqlite3.cursor()
         empty_cursor.execute('')
