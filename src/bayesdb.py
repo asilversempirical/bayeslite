@@ -33,7 +33,7 @@ from bayeslite.util import cursor_value
 bayesdb_open_cookie = 0xed63e2c26d621a5b5146a334849d43f0
 
 def bayesdb_open(pathname=None, builtin_metamodels=None, seed=None,
-        version=None, compatible=None):
+                 version=None, compatible=None, bdbclass=None):
     """Open the BayesDB in the file at `pathname`.
 
     If there is no file at `pathname`, it is automatically created.
@@ -52,8 +52,9 @@ def bayesdb_open(pathname=None, builtin_metamodels=None, seed=None,
     """
     if builtin_metamodels is None:
         builtin_metamodels = True
-    bdb = BayesDB(bayesdb_open_cookie, pathname=pathname, seed=seed,
-        version=version, compatible=compatible)
+    bdbclass = bdbclass if bdbclass is not None else BayesDB
+    bdb = bdbclass(bayesdb_open_cookie, pathname=pathname, seed=seed,
+                   version=version, compatible=compatible)
     if builtin_metamodels:
         metamodel.bayesdb_register_builtin_metamodels(bdb)
     return bdb
