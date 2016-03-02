@@ -43,7 +43,10 @@ class TestDistribution(Immutable, DistributionGpm):
             return func(*args, **kwrds)
 
         return wrapped
+<<<<<<< variant A
 
     @staticmethod
     def init_wrapper(self, ):
         pass
+>>>>>>> variant B
+======= end
