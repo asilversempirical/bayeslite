@@ -23,6 +23,7 @@ interface for Crosscat.
 """
 
 import apsw
+import copy
 import itertools
 import json
 import math
@@ -228,6 +229,12 @@ class CrosscatMetamodel(metamodel.IBayesDBMetamodel):
         self._crosscat = crosscat
         self._subsample = subsample
         self._theta_validator = crosscat_theta_validator.Validator()
+
+    def seeded_model(self, seed):
+        rv = copy.copy(self)
+        rv._crosscat = copy.copy(self._crosscat)
+        rv._crosscat.seed(seed)
+        return rv
 
     def _crosscat_cache_nocreate(self, bdb):
         if bdb.cache is None:
@@ -653,15 +660,13 @@ class CrosscatMetamodel(metamodel.IBayesDBMetamodel):
                 n = cursor_value(bdb.sql_execute(sql))
                 sql = 'SELECT _rowid_ FROM %s ORDER BY _rowid_ ASC' % (qt,)
                 cursor = bdb.sql_execute(sql)
-                seed = struct.pack('<QQQQ', 0, 0, k, n)
-                uniform = weakprng.weakprng(seed).weakrandom_uniform
                 # https://en.wikipedia.org/wiki/Reservoir_sampling
                 samples = []
                 for i, row in enumerate(cursor):
                     if i < k:
                         samples.append(row)
                     else:
-                        r = uniform(i + 1)
+                        r = bdb.prng.randint(0, i + 1)
                         if r < k:
                             samples[r] = row
                 cursor = samples

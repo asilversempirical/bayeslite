@@ -66,12 +66,6 @@ def test_bayesdb_instantiation():
     with pytest.raises(ValueError):
         bayeslite.BayesDB(':memory:', 0xdeadbeef)
 
-def test_prng_determinism():
-    bdb = bayeslite.bayesdb_open(builtin_metamodels=False)
-    assert bdb._prng.weakrandom_uniform(1000) == 303
-    assert bdb.py_prng.uniform(0, 1) == 0.6156331606142532
-    assert bdb.np_prng.uniform(0, 1) == 0.28348770982811367
-
 def test_openclose():
     with bayesdb():
         pass
@@ -545,16 +539,16 @@ def test_crosscat_constraints():
     class FakeEngine(crosscat.LocalEngine.LocalEngine):
         def predictive_probability_multistate(self, M_c, X_L_list,
                 X_D_list, Y, Q):
-            self._last_Y = Y
+            self.__class__._last_Y = Y
             sup = super(FakeEngine, self)
             return sup.simple_predictive_probability_multistate(M_c=M_c,
                 X_L_list=X_L_list, X_D_list=X_D_list, Y=Y, Q=Q)
         def simple_predictive_sample(self, M_c, X_L, X_D, Y, Q, n):
-            self._last_Y = Y
+            self.__class__._last_Y = Y
             return super(FakeEngine, self).simple_predictive_sample(M_c=M_c,
                 X_L=X_L, X_D=X_D, Y=Y, Q=Q, n=n)
         def impute_and_confidence(self, M_c, X_L, X_D, Y, Q, n):
-            self._last_Y = Y
+            self.__class__._last_Y = Y
             return super(FakeEngine, self).impute_and_confidence(M_c=M_c,
                 X_L=X_L, X_D=X_D, Y=Y, Q=Q, n=n)
     engine = FakeEngine(seed=0)

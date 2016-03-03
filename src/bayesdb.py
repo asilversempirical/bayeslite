@@ -26,7 +26,6 @@ import bayeslite.metamodel as metamodel
 import bayeslite.parse as parse
 import bayeslite.schema as schema
 import bayeslite.txn as txn
-import bayeslite.weakprng as weakprng
 
 from bayeslite.util import cursor_value
 
@@ -85,15 +84,17 @@ class BayesDB(object):
         self.cache = None
         self.temptable = 0
         self.qid = 0
-        if seed is None:
-            seed = struct.pack('<QQQQ', 0, 0, 0, 0)
-        self._prng = weakprng.weakprng(seed)
-        pyrseed = self._prng.weakrandom32()
-        self._py_prng = random.Random(pyrseed)
-        nprseed = [self._prng.weakrandom32() for _ in range(4)]
-        self._np_prng = numpy.random.RandomState(nprseed)
-        schema.bayesdb_install_schema(self, version=version,
-            compatible=compatible)
+        self.version = version
+        self.compatible = compatible
+        self.connect()
+        self.prng = numpy.random.RandomState(seed)
+
+    def connect(self):
+        "Connect to database"
+        self._sqlite3 = apsw.Connection(self.pathname)
+        # Load bayesdb schema into database, if necessary
+        schema.bayesdb_install_schema(
+            self, version=self.version, compatible=self.compatible)
         bqlfn.bayesdb_install_bql(self._sqlite3, self)
 
         # Cache an empty cursor for convenience.
@@ -111,26 +112,6 @@ class BayesDB(object):
         assert self.txn_depth == 0, "pending BayesDB transactions"
         self._sqlite3.close()
         self._sqlite3 = None
-
-    @property
-    def py_prng(self):
-        """A :class:`random.Random` object local to this BayesDB instance.
-
-        This pseudorandom number generator is deterministically
-        initialized from the seed supplied to :func:`bayesdb_open`.
-        Use it to conserve reproducibility of results.
-        """
-        return self._py_prng
-
-    @property
-    def np_prng(self):
-        """A Numpy RandomState object local to this BayesDB instance.
-
-        This pseudorandom number generator is deterministically
-        initialized from the seed supplied to :func:`bayesdb_open`.
-        Use it to conserve reproducibility of results.
-        """
-        return self._np_prng
 
     def trace(self, tracer):
         """Trace execution of BQL queries.

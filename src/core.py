@@ -244,7 +244,13 @@ def bayesdb_generator_metamodel(bdb, id):
             name = bayesdb_generator_name(bdb, id)
             raise ValueError('Metamodel of generator %s not registered: %s' %
                 (repr(name), repr(row[0])))
-        return bdb.metamodels[row[0]]
+        metamodel = bdb.metamodels[row[0]]
+        # XXX: If this interface makes sense, we should remove the conditional
+        if hasattr(metamodel, 'seeded_model'):
+            # metamodel is expecting us to seed its PRNG state
+            seed = bdb.prng.randint(2 ** 31 - 1)
+            metamodel = metamodel.seeded_model(seed=seed)
+        return metamodel
 
 def bayesdb_generator_table(bdb, id):
     """Return the name of the table of the generator with id `id`."""
