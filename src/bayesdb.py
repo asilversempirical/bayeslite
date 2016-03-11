@@ -86,10 +86,10 @@ class BayesDB(object):
         self.qid = 0
         self.version = version
         self.compatible = compatible
-        self.connect()
+        self._connect()
         self.prng = numpy.random.RandomState(seed)
 
-    def connect(self):
+    def _connect(self):
         "Connect to database"
         self._sqlite3 = apsw.Connection(self.pathname)
         # Load bayesdb schema into database, if necessary

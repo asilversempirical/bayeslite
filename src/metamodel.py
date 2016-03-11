@@ -87,6 +87,10 @@ class IBayesDBMetamodel(object):
     the metamodel in the database.
     """
 
+    def seeded_model(self, seed):
+        "Return an instance of the metamodel, seeded with the given seed."
+        raise NotImplementedError
+
     def name(self):
         """Return the name of the metamodel as a str."""
         raise NotImplementedError
