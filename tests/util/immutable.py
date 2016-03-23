@@ -53,6 +53,7 @@ import logging
 
 from util import freeze
 from util.freeze import deepfreeze, protected_methods, unequal
+from util.freeze import get_mutable_attributes
 
 
 def wraps(of, wf):
@@ -142,7 +143,8 @@ class _MetaImmutable(type):
 
     def __freeze_all_attributes__(klass, self):
         # (Cannot freeze __dict__.)
-        self.__dict__ = dict((k, deepfreeze(v))
+        mutables = get_mutable_attributes(self)
+        self.__dict__ = dict((k, (deepfreeze(v) if k not in mutables else v))
                              for k, v in self.__dict__.iteritems())
 
 

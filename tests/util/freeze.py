@@ -11,8 +11,16 @@ import collections
 import copy
 from frozendict import frozendict
 from functools import partial
+from itertools import chain
 import logging
 from numbers import Number
+
+from scipy.stats._distn_infrastructure import rv_frozen
+from numpy import ndarray
+
+# A mapping of classes to attributes which should not be made immutable,
+# because their implementations can't handle it.
+mutable_attributes = {rv_frozen: set(['kwds'])}
 
 # A mapping of method names which which should be protected from accidental
 # access in Immutable instances because their default semantics imply mutation.
@@ -42,6 +50,11 @@ frozen_types.update((Number, basestring, buffer, memoryview, slice,
                      frozenset))
 frozen_types = tuple(frozen_types)  # Needs to be tuple for isinstance usage
 
+# Used to turn on logging in recursive deepfreeze
+LOGFREEZE = False
+logging.basicConfig(filename='/tmp/freeze.log')
+logging.getLogger().setLevel(logging.DEBUG)  # to display in REPL
+
 
 class UnEqual:
 
@@ -53,7 +66,12 @@ class UnEqual:
 unequal = UnEqual()
 
 
-class _Frozen:
+def get_mutable_attributes(o):
+    return set(chain(*(m for k, m in mutable_attributes.items()
+                       if isinstance(o, k))))
+
+
+class _Frozen(object):
 
     """Immutable wrapper for arbitrary object. Don't use this directly, use
     deepfreeze. This only makes the top level references immutable.
@@ -64,11 +82,17 @@ class _Frozen:
         self._value = value
 
     def __getattribute__(self, name):
+        v = super(_Frozen, self).__getattribute__('_value')
+        if name == '_value':
+            return v
+        if LOGFREEZE:
+            logging.debug('in __getattribute__: %r, %s' % (self, name))
         if name in protected_methods:
             raise NotImplementedError('%s is forbidden on Frozen objects')
-        v = (getattr(self._value, name) if name != '_value' else
-             super(_Frozen, self).__getattribute__('_value'))
-        return _freeze(v)
+        rv = getattr(self._value, name)
+        if name in get_mutable_attributes(v):
+            return rv
+        return _freeze(rv)
 
     def __hash__(self):
         return hash(self._value)
@@ -77,7 +101,7 @@ class _Frozen:
         return self._value == getattr(other, '_value', unequal)
 
     def __call__(self, *args, **kw):
-        return _Frozen(self._value(*args, **kw))
+        return _freeze(self._value(*args, **kw))
 
 frozen_types += (_Frozen,)
 
@@ -85,6 +109,8 @@ frozen_types += (_Frozen,)
 def _freeze(o):
     """Freeze the top level references of o if it is a collection. Don't use this
     directly, use deepfreeze."""
+    if LOGFREEZE:
+        logging.debug('entering _freeze: ' + repr(o))
     if isinstance(o, frozen_types):
         return o
     if isinstance(o, collections.Mapping):
@@ -93,11 +119,13 @@ def _freeze(o):
         return frozenset(o)
     if isinstance(o, collections.Sequence):
         return tuple(o)
+    if isinstance(o, ndarray):
+        rv = o.copy()
+        rv.setflags(write=False)
+        return rv
+    if LOGFREEZE:
+        logging.debug('exiting _freeze: ' + repr(o))
     return _Frozen(o)
-
-# Used to turn on logging in recursive deepfreeze
-# logging.getLogger().setLevel(logging.DEBUG) to display in REPL
-LOGFREEZE = False
 
 
 def deepfreeze(o, memo=None):
@@ -125,10 +153,12 @@ def deepfreeze(o, memo=None):
     if isinstance(o, collections.Sequence):
         return _freeze(list(f(e) for e in o))
     if hasattr(o, '__dict__'):
-        # Freeze all attributes. Can't freeze the dict, unfortunately, but it
-        # will be returned frozen by _Frozen.__getattribute__
+        mutables = get_mutable_attributes(o)
+        # Freeze all immutable attributes. Can't freeze the dict, but it will
+        # be returned frozen by _Frozen.__getattribute__
         for k, v in o.__dict__.iteritems():
-            o.__dict__[k] = f(v)
+            if k not in mutables:
+                o.__dict__[k] = f(v)
     memo[_id] = _freeze(o)
     if LOGFREEZE:
         logging.debug('Exiting deepfreeze: ' + repr((o, memo)))
