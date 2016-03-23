@@ -3,7 +3,7 @@ import scipy.integrate
 from scipy.stats import norm
 from numpy import log, sqrt, exp, inf
 
-from util import test_statistic_threshold as tst
+from util import statistic_threshold as tst
 
 
 def kullback_leibler(postsample, postpdf, comppdf):
