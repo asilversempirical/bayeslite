@@ -23,7 +23,7 @@ def safe_product(factors):
         if factor == 0:  # Can't take log of 0
             return 0
         sgn *= sign(factor)
-        logsum = fsum(logsum, log(abs(factor)))
+        logsum = fsum([logsum, log(abs(factor))])
     return sgn * exp(logsum)
 
 
