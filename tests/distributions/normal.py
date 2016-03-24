@@ -7,7 +7,6 @@ from scipy.special import gammaln
 from util.entropy import rvs
 
 from distributions.distribution import TestDistribution
-from util.arithmetic import safe_mean, safe_product, safe_divide, fsum
 
 
 class Normal(TestDistribution):
@@ -68,18 +67,18 @@ class NormalInvGammaPrior(TestDistribution):
         used here.)"""
         data = scipy.array(data).flatten()
         n0 = self.n0 + len(data)
-        total = fsum([safe_product([self.mumu, self.n0]), fsum(data)])
+        total = self.mumu * self.n0 + sum(data)
         # mean of "mu | tau, x" in Jordan's formula is mean of total data
-        mumu = safe_divide(total, n0)
-        # "alpha + n/2" from Jordan's formula
-        sigshape = fsum([self.sigshape, len(data) / 2.])
-        mean = safe_mean(data)
-        zeroed = scipy.array([fsum([d, -mean]) for d in data])
-        t2 = safe_divide(fsum(zeroed**2), 2)
-        meandiffs = scipy.array(fsum([mean, -self.mumu]))**2
-        t3_denom = safe_product([len(data), self.n0, meandiffs])
+        mumu = total / n0
+        # "alpha +code, it' n/2" from Jordan's formula
+        sigshape = self.sigshape + len(data) / 2.
+        mean = data.mean()
+        zeroed = data - mean
+        t2 = sum(zeroed**2) / 2
+        meandiffs = (mean - self.mumu)**2
+        t3_denom = len(data) * self.n0 * meandiffs
         # "beta+0.5*sum(xi-x)**2+n*n0*(xbar-mu0)/2(n+n0)" from Jordan formula.
-        sigrate = fsum([self.sigrate, t2, safe_divide(t3_denom, 2 * n0)])
+        sigrate = self.sigrate + t2 + t3_denom / (2 * n0)
         return NormalInvGammaPrior(mumu, sigshape, sigrate, n0)
 
     def predictive_logpdf(self, x):
@@ -89,10 +88,9 @@ class NormalInvGammaPrior(TestDistribution):
         def beta_factor(p):
             return p.sigshape * log(p.sigrate)
         # Eq. 99 of http://www.cs.ubc.ca/~murphyk/Papers/bayesGauss.pdf
-        return fsum([gammaln(posterior.sigshape), -gammaln(self.sigshape),
-                     beta_factor(self), -beta_factor(posterior),
-                     log(self.n0 / posterior.n0) / 2,
-                     -len(x) * log(2 * pi) / 2.])
+        return (gammaln(posterior.sigshape) - gammaln(self.sigshape) +
+                beta_factor(self) - beta_factor(posterior) +
+                log(self.n0 / posterior.n0) / 2 - len(x) * log(2 * pi) / 2.)
 
     def __getstate__(self):
         # FIXME: This is dangerous... Is there a way to read this out of the
