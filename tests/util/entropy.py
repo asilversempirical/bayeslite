@@ -5,10 +5,38 @@ n=rvs.norm(0,1) will return a normal distribution.
 
 """
 
-import functools
+from hypothesis import strategies as st
+from functools import partial
+import numbers
 from numpy.random import RandomState
 from numpy import ndarray
 from scipy import stats as original_stats
+
+word_mask = 2**32 - 1  # RandomState can only accept 32-bit seeds
+
+class HighEntropyRandomState(RandomState):
+
+    "A RandomState which has been seeded with at least 64 bits of entropy"
+
+
+def random_state(seed):
+    """While RandomState can only accept 32-bit seeds, it can take an array of
+    them. This function produces such an array and passes it to RandomState.
+    This is important because if we only have 32 bits of entropy to draw on we
+    will run into birthday paradoxes in massively parallel situations.
+
+    """
+    if (seed < 0) or (not isinstance(seed, numbers.Integral)):
+        raise ValueError('Seed must be a non-negative integer')
+    seed_array = []
+    while seed:
+        seed_array.append(seed & word_mask)
+        seed >>= 32
+    # Make sure we're using at least a 64-bit seed (at least 2 32-bit numbers)
+    seed_array.extend(max(0, 2 - len(seed_array)) * [0])
+    return HighEntropyRandomState(seed_array)
+
+seeds = partial(st.integers, min_value=0)
 
 class StatsWrapper:
 
@@ -23,9 +51,9 @@ class StatsWrapper:
         return self.rvs
 
     def rvs(self, size=None, random_state=None):
-        if not isinstance(random_state, RandomState):
+        if not isinstance(random_state, HighEntropyRandomState):
             raise ValueError('Need to explicitly set random_state with '
-                             'numpy.random.RandomState instance')
+                             'util.entropy.HighEntropyRandomState instance')
         # standard rvs method mutates a copy of the kwds dictionary...
         rv = self.__obj.rvs(size=size, random_state=random_state)
         if type(rv) == ndarray:
@@ -43,13 +71,5 @@ class Stats(object):
 rvs = Stats()
 
 
-def random_state(state):
-    if isinstance(state, int):
-        state = RandomState(state)
-    if not isinstance(state, RandomState):
-        raise ValueError('Random seed should be int or RandomState instance')
-    return state
-
-
 def seeded(stoch_func, state):
-    return functools.partial(stoch_func, prngstate=random_state(state))
+    return partial(stoch_func, prngstate=random_state(state))

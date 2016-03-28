@@ -16,11 +16,9 @@ further numiterations.
 from copy import deepcopy
 from itertools import chain
 import numpy as np
-from numpy.random import RandomState
-import random
 
 from distributions.distribution import TestDistribution
-from util import bql
+from util import bql, entropy
 
 maxint = 2**63 - 2  # Largest integer random_integers can handle
 
@@ -32,15 +30,17 @@ class BDB(TestDistribution):
 
     def __init__(self, sample=None, prngstate=None, numchains=None,
                  numiterations=None, bdb=None):
-        if prngstate is None:
-            raise TypeError('Explicitly set the initial PRNG state')
         if bdb is None:
             self.bdb = bql.bdb_open()
             self.seed(prngstate)
             self.sample = sample
             self._populate_model()
+            if numchains is None:
+                raise ValueError('Explicitly give number of chains')
             self._create_chains(numchains, prngstate)
-            self._analyze(self, numiterations, prngstate)
+            if numiterations is None:
+                raise ValueError('Explicitly give number of iterations')
+            self._analyze(numiterations, prngstate)
         else:
             self.bdb = deepcopy(bdb.bdb)
             if sample is not None:
@@ -56,13 +56,11 @@ class BDB(TestDistribution):
         "Set the seeds for the bdb's RNGs"
         # Search on flowdock for "what's the role of weakprng in bayeslite?"
         # for discussion.  Currently weakprng's only role is to seed the python
-        if isinstance(prngstate, RandomState):
+        if isinstance(prngstate, entropy.HighEntropyRandomState):
             prngstate = prngstate.random_integers(-maxint, maxint)
-        elif isinstance(prngstate, random.Random):
-            prngstate = prngstate.randint(-maxint, maxint)
         else:
             raise TypeError(
-                'prngstate must be np.RandomState or random.Random')
+                'prngstate must be util.entropy.HighEntropyRandomState')
         self.bdb.set_entropy(prngstate)
 
     def forbidden(self, message):

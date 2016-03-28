@@ -1,9 +1,10 @@
 """Utilities for wrapping python objects with immutable proxies.
 
-The main entry point is deepfreeze, which will walk down an object and
-wrap everything in it with a proxy which does not allow mutating special
-methods. Do not use _freeze or _Frozen directly. Their return values can
-contain mutable attributes.
+This is mainly for use by the util.immutable module, and you should read its
+documentation first. The main entry point here is deepfreeze, which will walk
+down an object and wrap everything in it with a proxy which does not allow
+mutating special methods. Do not use _freeze or _Frozen directly. Their return
+values can contain mutable attributes.
 
 """
 
@@ -17,10 +18,11 @@ from numbers import Number
 
 from scipy.stats._distn_infrastructure import rv_frozen
 from numpy import ndarray
+from bayeslite.metamodels.crosscat_theta_validator import Validator
 
 # A mapping of classes to attributes which should not be made immutable,
 # because their implementations can't handle it.
-mutable_attributes = {rv_frozen: set(['kwds'])}
+mutable_attributes = {rv_frozen: set(['kwds']), Validator: set(['schema'])}
 
 # A mapping of method names which which should be protected from accidental
 # access in Immutable instances because their default semantics imply mutation.
@@ -52,7 +54,7 @@ frozen_types = tuple(frozen_types)  # Needs to be tuple for isinstance usage
 
 # Used to turn on logging in recursive deepfreeze
 LOGFREEZE = False
-logging.basicConfig(filename='/tmp/freeze.log')
+logging.basicConfig(filename='/tmp/freeze.log')  # To log to file
 logging.getLogger().setLevel(logging.DEBUG)  # to display in REPL
 
 
@@ -103,6 +105,9 @@ class _Frozen(object):
     def __call__(self, *args, **kw):
         return _freeze(self._value(*args, **kw))
 
+    def __repr__(self):
+        return '<Frozen %r>' % self._value
+
 frozen_types += (_Frozen,)
 
 
@@ -146,6 +151,8 @@ def deepfreeze(o, memo=None):
         return memo[_id]
     if isinstance(o, frozen_types):
         return o
+    if isinstance(o, ndarray):
+        return _freeze(o)
     if isinstance(o, collections.Mapping):
         return _freeze(dict((f(k), f(v)) for k, v in o.iteritems()))
     if isinstance(o, collections.Set):
@@ -156,6 +163,8 @@ def deepfreeze(o, memo=None):
         mutables = get_mutable_attributes(o)
         # Freeze all immutable attributes. Can't freeze the dict, but it will
         # be returned frozen by _Frozen.__getattribute__
+        if isinstance(o, Validator):
+            pass
         for k, v in o.__dict__.iteritems():
             if k not in mutables:
                 o.__dict__[k] = f(v)

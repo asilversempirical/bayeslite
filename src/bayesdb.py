@@ -92,12 +92,8 @@ class BayesDB(object):
 
     def set_entropy(self, seed):
         "Seed the random number generators from seed"
-        if seed is None:
-            seed = struct.pack('<QQQQ', 0, 0, 0, 0)
-        self._prng = weakprng.weakprng(seed)
-        pyrseed = self._prng.weakrandom32()
-        self._py_prng = random.Random(pyrseed)
-        nprseed = [self._prng.weakrandom32() for _ in range(4)]
+        self._py_prng = random.Random(seed)
+        nprseed = [self._py_prng.randrange(0, 2**32) for _ in range(4)]
         self._np_prng = numpy.random.RandomState(nprseed)
 
     def connect(self):

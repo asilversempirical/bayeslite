@@ -17,10 +17,22 @@ it... E.g. object.__setattr__(myinstance, aname, avalue) will usually do what
 myinstance.aname=avalue intends. If you do that in finished code you'll deserve
 exactly whatever confusion you get, though, and you PROBABLY WON'T LIKE IT.
 
-Arguments passed to __init__ should be immutable, and a rough check of this is
-done by computing their hash, which is then used as the hash of the instance.
-Once __init__ has been run, all subattributes of the instance are recursively
-frozen by wrapping them in the Frozen class.
+If there are attributes of a class which you don't control and must be mutable,
+you can register those by adding them to util.freeze.mutable_attributes, which
+is a dictionary {<class>: <collection of names for mutable attributes>}.
+
+If you are subclassing a class with mutable methods, you can specify those by
+adding a class attribute __mutating_methods__, which should be a dictionary
+{<method name>: <description of method>}.
+
+Arguments passed to __init__ should be usually be immutable, and a rough check
+of this is done by computing their hash, which is then used as the hash of the
+instance. Once __init__ has been run, all subattributes of the instance are
+recursively frozen by wrapping them in the Frozen class. If the arguments
+should not be immutable (e.g. because you're wrapping a mutable class, as in
+the Array class below), then you can provide a hash value via a
+__compute_special_hash__ method. Don't override __compute_hash__, as it uses
+name mangling.
 
 This class works by over-riding the instance construction procedure completely.
 For background on how it works, see
@@ -49,109 +61,28 @@ production, though. Most of the time, you'll benefit from these defenses.
 """
 
 from frozendict import frozendict
-import logging
+import inspect
+from itertools import chain
+import numpy as np
 
 from util import freeze
-from util.freeze import deepfreeze, protected_methods, unequal
-from util.freeze import get_mutable_attributes
-
-
-def wraps(of, wf):
-    """Assign useful metadata from function 'of' to wrapper wf."""
-    # Logic taken from functools.wraps, but is a bit more robust
-    attrs = ['__%s__' % name for name in 'name module doc'.split()]
-    attrs.extend('im_' + n for n in 'class func self')
-    for name in attrs:
-        if hasattr(of, name):
-            setattr(wf, name, getattr(of, name))
-
-
-class _MetaImmutable(type):
-
-    # Turn this off to disable the protections this class provides
-    __DEBUG__ = __debug__
-
-    # Turn this on to log calls to special method wrappers
-    LOGWRAPS = False
-
-    def wrap_method(klass, name, description):
-
-        def notimplementederror(*args, **kw):
-            raise NotImplementedError('class %s has no method %s' % (
-                klass, name))
-
-        method = getattr(klass, name, notimplementederror)
-        if method == notimplementederror:
-            method.__name__ = name
-        elif hasattr(getattr(method, 'im_func', None),
-                     '__immutable_wrapper__'):
-            # Already a wrapper in a superclass; no need to make another
-            return
-
-        # Still in wrap_method
-        def wrapped(self, *args, **kw):
-            if klass.LOGWRAPS:
-                logging.debug('%s.%s(*%s, **%s)' % (
-                    self.__class__.__name__, name, args, kw))
-            if hasattr(self, '__initialized__'):
-                errmsg = '%s instance is Immutable and does not support %s' % (
-                    self.__class__.__name__, description)
-                raise TypeError(errmsg)
-            return method(self, *args, **kw)
-
-        # Still in wrap_method
-        wraps(method, wrapped)  # Transfer method metadata to wrapper
-        setattr(klass, name, wrapped)
-        # Signal that this is already a wrapper which checks for immutability.
-        # Can't put this on the method itself, not allowed.
-        setattr(getattr(klass, name).im_func, '__immutable_wrapper__', True)
-
-    def __init__(klass, name, bases, attrs, **kwargs):
-        """Called during initialization of client class, not its instances.
-
-        We use this to set the wrappers for the mutating special
-        methods.
-
-        """
-        # Provide wrappers for mutating special methods
-        for name, description in protected_methods.iteritems():
-            klass.wrap_method(name, description)
-
-    def __call__(klass, *args, **kwargs):
-        """This method is called when you do C(*args, **kw) on a subclass C of
-        Immutable. It's by overriding this that we disable mutation methods.
-
-        """
-        # Create the instance
-        self = klass.__new__(klass, *args, **kwargs)
-        klass.__initialize_instance__(self, args, kwargs)
-        return self
-
-    def __initialize_instance__(klass, self, args, kwargs):
-        # Do expected initialization
-        self.__init__(*args, **kwargs)
-        if klass.__DEBUG__:
-            # Record the (frozen) initial values
-            self.__initial_values__ = deepfreeze((args, kwargs))
-            self.__compute_hash__()
-            # Turn on immutability
-            klass.__freeze_all_attributes__(self)
-            self.__initialized__ = True
-        else:
-            # Record the initial values (fast but unsafe: potentially mutable.)
-            self.__initial_values__ = (args, kwargs)
-
-    def __freeze_all_attributes__(klass, self):
-        # (Cannot freeze __dict__.)
-        mutables = get_mutable_attributes(self)
-        self.__dict__ = dict((k, (deepfreeze(v) if k not in mutables else v))
-                             for k, v in self.__dict__.iteritems())
+reload(freeze)
+from util.meta_immutable import _MetaImmutable
 
 
 class Immutable(object):
 
     __metaclass__ = _MetaImmutable
     __doc__ = __doc__  # Just use module docstring
+
+    @staticmethod
+    def unhashable_type_msg(exception):
+        matches = [a for a in exception.args
+                   if isinstance(a, basestring) and 'unhashable type' in a]
+        if matches:
+            assert len(matches) == 1, 'Should only by one error message'
+            return matches.pop()
+        return None
 
     def __compute_hash__(self):
         """Called by _MetaImmutable.__initialize_instance__ after performing
@@ -161,15 +92,28 @@ class Immutable(object):
         attribute name gets mangled.
 
         """
+        if hasattr(self, '__compute_special_hash__'):
+            self.__hash = self.__compute_special_hash__()
+            return
         try:
             self.__hash = hash(self.__initial_values__)
         except TypeError, e:
-            # Verify error was due to unhashable type and report it if so
-            strargs = (a for a in e.args if isinstance(a, basestring))
-            if any('unhashable type' in a for a in strargs):
-                msg = 'Immutable %s initialized with unhashable arguments'
-                raise TypeError(msg % self.__class__.__name__)
-            else:
+            if self.unhashable_type_msg(e):
+                # Iterate over the positional and keyword arguments to search
+                # for the problematic argument
+                args = chain(enumerate(self.__initial_values__[0]),
+                             self.__initial_values__[1].items())
+                for argidx, arg in args:
+                    try:
+                        hash(arg)
+                    except TypeError, e:
+                        message = self.unhashable_type_msg(e)
+                        break
+                msg = ('Immutable %s initialized with unhashable arguments: '
+                       '"%s".  Complaint was about argument %i: %r.')
+                raise TypeError(msg % (self.__class__.__name__, message,
+                                       argidx, arg))
+            else:  # Some other TypeError was raised.  Pass it on.
                 raise e
 
     def __getattribute__(self, name):
@@ -197,8 +141,57 @@ class Immutable(object):
 
     def __eq__(self, other):
         return self.__initial_values__ == getattr(other, '__initial_values__',
-                                                  unequal)
+                                                  freeze.unequal)
 
-# Register this as a type which does not need further freezing by
+    def __get_init_args__(self):
+        posargnames = inspect.getargspec(self.__init__).args
+        if posargnames.pop(0) != 'self':
+            raise RuntimeError('Unexpected argument list')
+        args = zip(posargnames, self.__initial_values__[0])
+        # Return positional args + kwargs
+        return args + self.__initial_values__[1].items()
+
+    def __repr__(self):
+        args = self.__get_init_args__()
+        return '%s(%s)' % (self.__class__.__name__,
+                           ', '.join('%s=%r' % (attrname, val)
+                                     for attrname, val in args))
+
+
+class Array(Immutable, np.ndarray):
+
+    """A numpy array which is immutable (modulo warnings given above.)"""
+
+    def __new__(self, input_array):
+        # For an explanation of how this works, see the output of this command:
+        # "help(np.doc.subclassing)".  Briefly, you have to convert a raw numpy
+        # array in __new__ rather than create it in __init__.
+        rv = np.asarray(input_array).copy().view(Array)
+        # Override immutability to record type of initial array
+        object.__setattr__(rv, '__initial_type__', type(input_array))
+        return rv
+
+    def __get_init_args__(self):
+        return [('input_array', self.view(self.__initial_type__))]
+
+    def __compute_special_hash__(self):
+        # Arrays are unhashable, so need to pull its data in hashable format.
+        # View as np.ndarray to avoid infinite loop when flattening, which
+        # would otherwise create another 1-D Array, for which the hash would
+        # need to be computed, which would result in another 1-D Array, etc.
+        values = tuple(self.view(np.ndarray).flatten())
+        return hash((values, self.shape, self.dtype))
+
+    # Annotate the mutating methods for Immutable
+    __method_groups = {'fill itemset put setfield': 'changing array values',
+                       'partition reshape sort': 'rearranging array values',
+                       'resize': 'changing dimensions',
+                       'setflags': 'changing flags'}
+    __mutating_methods__ = {}
+    for attrnames, description in __method_groups.items():
+        for attrname in attrnames.split():
+            __mutating_methods__[attrname] = description
+
+# Register these as types which do not need further freezing by
 # freeze.deepfreeze.
-freeze.frozen_types += (Immutable,)
+freeze.frozen_types += (Immutable, Array)
