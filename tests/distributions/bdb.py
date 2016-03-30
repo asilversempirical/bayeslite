@@ -2,7 +2,9 @@
 
 Although the system wrapped up in a BayesDB instance is extremely protean, we
 can make all the public methods here referentially transparent by doing all the
-training during initialization from a fresh bdb.
+training during initialization from a fresh bdb. Note, however, that at the
+moment these methods are not thread-safe: The BayesDB instance is seeded at the
+start of each method, but no lock is taken.
 
 BDB can be instantiated as either BDB(sample, seed, numchains, numiterations),
 or BDB(bdb=<other BDB instance>). In the first case, a fresh bdb is created,
@@ -11,14 +13,18 @@ numchains chains for numiterations iterations. In the second case, a copy is
 taken of bdb, the copy's seed is set, and then its models are trained for a
 further numiterations.
 
+If you want to make a script for reporting a failure, replace the invocation of
+BDB with make_reporter.
+
 """
 
 from copy import deepcopy
 from itertools import chain
 import numpy as np
+import sys
 
 from distributions.distribution import TestDistribution
-from util import bql, entropy
+from util import bql, entropy, immutable
 
 maxint = 2**63 - 2  # Largest integer random_integers can handle
 
@@ -29,9 +35,11 @@ maxint = 2**63 - 2  # Largest integer random_integers can handle
 class BDB(TestDistribution):
 
     def __init__(self, sample=None, prngstate=None, numchains=None,
-                 numiterations=None, bdb=None):
+                 numiterations=None, bdb=None, reporter_bdb=None):
         if bdb is None:
-            self.bdb = bql.bdb_open()
+            self.bdb = reporter_bdb or self._get_bdb()
+            if reporter_bdb:
+                reporter_bdb.truebdb = self._get_bdb()
             self.seed(prngstate)
             self.sample = sample
             self._populate_model()
@@ -51,6 +59,9 @@ class BDB(TestDistribution):
                     "Don't make chains with different training lengths!")
             if numiterations is not None:
                 self._analyze(numiterations, prngstate)
+
+    def _get_bdb(self):
+        return bql.bdb_open()
 
     def seed(self, prngstate):
         "Set the seeds for the bdb's RNGs"
@@ -79,7 +90,7 @@ class BDB(TestDistribution):
     def _create_chains(self, numchains, prngstate):
         "Create the model states the MCMC chains will iterate on."
         self.seed(prngstate)
-        cmd = 'CREATE GENERATOR D_cc FOR D USING crosscat("c" numerical)"'
+        cmd = 'CREATE GENERATOR D_cc FOR D USING crosscat("c" numerical)'
         self.bdb.execute(cmd)
         self.bdb.execute('INITIALIZE %i MODELS for D_cc' % numchains)
         self._create_chains = self.forbidden('Already created')
@@ -94,16 +105,33 @@ class BDB(TestDistribution):
         "Draw samplesize variates from the estimated posterior distribution"
         self.seed(prngstate)
         simcmd = 'SIMULATE c from D_cc LIMIT %i' % samplesize
-        return np.array(self.exec_to_array(simcmd))
+        return np.array(self.bdb.exec_to_array(simcmd))
 
-    def make_predictive_logpdf(self, sample):
-        "Return function f(x \in sample) => bdb-estimated logprob"
-        probcmd = 'PREDICTIVE PROBABILITY of c FROM D_cc'
-        probs = np.array(self.exec_to_array(probcmd))
-        assert sample.shape == probs.shape
-        self._predictive_logpdf = dict(zip(sample, np.log(probs))).__getitem__
+    def predictive_logpdf(self, value):
+        "Return bdb-estimated logprob"
+        probcmd = 'ESTIMATE PROBABILITY of c=%s BY D_cc' % value
+        prob = self.bdb.exec_to_array(probcmd)
+        assert len(prob) == 1
+        return np.log(prob[0])
 
-    def predictive_logpdf(self, x):
-        if not hasattr(self, '_predictive_logpdf'):
-            self.make_predictive_logpdf(x)
-        return self._predictive_logpdf
+
+class BDBReporter(object):
+
+    def execute(self, msg):
+        print >> self.output, 'bdb.execute(%s)' % repr(msg)
+        return self.truebdb.execute(msg)
+
+    def sql_execute(self, msg):
+        print >> self.output, 'bdb.sql_execute(%s)' % repr(msg)
+        return self.truebdb.sql_execute(msg)
+
+    def __getattribute__(self, name):
+        if name in 'execute sql_execute truebdb output'.split():
+            return object.__getattribute__(self, name)
+        return object.__getattribute__(self.truebdb, name)
+
+
+def make_reporter(*args, **kwargs):
+    bdb = BDBReporter()
+    bdb.output = kwargs.pop('output', sys.stdout)
+    return BDB(*args, **dict(kwargs, reporter_bdb=bdb))

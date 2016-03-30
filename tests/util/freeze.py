@@ -53,9 +53,9 @@ frozen_types.update((Number, basestring, buffer, memoryview, slice,
 frozen_types = tuple(frozen_types)  # Needs to be tuple for isinstance usage
 
 # Used to turn on logging in recursive deepfreeze
-LOGFREEZE = False
+LOGFREEZE = True
 logging.basicConfig(filename='/tmp/freeze.log')  # To log to file
-logging.getLogger().setLevel(logging.DEBUG)  # to display in REPL
+logging.getLogger().setLevel(logging.DEBUG)  # to enable logging
 
 
 class UnEqual:
@@ -81,59 +81,44 @@ class _Frozen(object):
     """
 
     def __init__(self, value):
-        self._value = value
+        self.__value = value
 
     def __getattribute__(self, name):
-        v = super(_Frozen, self).__getattribute__('_value')
-        if name == '_value':
+        # Manual mangling
+        v = super(_Frozen, self).__getattribute__('_Frozen__value')
+        if name == '_Frozen__value':
             return v
         if LOGFREEZE:
             logging.debug('in __getattribute__: %r, %s' % (self, name))
         if name in protected_methods:
             raise NotImplementedError('%s is forbidden on Frozen objects')
-        rv = getattr(self._value, name)
+        rv = getattr(v, name)
         if name in get_mutable_attributes(v):
             return rv
-        return _freeze(rv)
+        return deepfreeze(rv)
 
     def __hash__(self):
-        return hash(self._value)
+        return hash(self.__value)
 
     def __eq__(self, other):
-        return self._value == getattr(other, '_value', unequal)
+        return self.__value == getattr(other, '_Frozen__value', unequal)
 
     def __call__(self, *args, **kw):
-        return _freeze(self._value(*args, **kw))
+        return deepfreeze(self.__value(*args, **kw))
 
     def __repr__(self):
-        return '<Frozen %r>' % self._value
+        # Get __value directly to prevent infinite recursion when logging in
+        # __getattribute__
+        value = object.__getattribute__(self, '_Frozen__value')
+        return '<Frozen %r>' % value
 
 frozen_types += (_Frozen,)
 
-
-def _freeze(o):
-    """Freeze the top level references of o if it is a collection. Don't use this
-    directly, use deepfreeze."""
-    if LOGFREEZE:
-        logging.debug('entering _freeze: ' + repr(o))
-    if isinstance(o, frozen_types):
-        return o
-    if isinstance(o, collections.Mapping):
-        return frozendict(o)
-    if isinstance(o, collections.Set):
-        return frozenset(o)
-    if isinstance(o, collections.Sequence):
-        return tuple(o)
-    if isinstance(o, ndarray):
-        rv = o.copy()
-        rv.setflags(write=False)
-        return rv
-    if LOGFREEZE:
-        logging.debug('exiting _freeze: ' + repr(o))
-    return _Frozen(o)
+# This is replaced by the immutable module, breaking the circular depedency.
+Array = None
 
 
-def deepfreeze(o, memo=None):
+def deepfreeze(o, memo=None, seen=None):
     """Walk into all references reachable from o, and wrap those references in
     immutable proxies.
 
@@ -141,34 +126,31 @@ def deepfreeze(o, memo=None):
     mutate, though you'll be able to if you insist.
 
     """
+    if isinstance(o, frozen_types):
+        return o
     if LOGFREEZE:
         logging.debug('Entering deepfreeze: ' + repr((o, memo)))
     # memo is used to break cycles in the reference graph.
     memo = memo if memo is not None else {}
-    f = partial(deepfreeze, memo=memo)
+    seen = seen if seen is not None else set()
+    f = partial(deepfreeze, memo=memo, seen=seen)
     _id = id(o)
+    assert _id not in seen, 'Infinite loop!'
+    seen.add(_id)
     if _id in memo:
         return memo[_id]
-    if isinstance(o, frozen_types):
-        return o
     if isinstance(o, ndarray):
-        return _freeze(o)
-    if isinstance(o, collections.Mapping):
-        return _freeze(dict((f(k), f(v)) for k, v in o.iteritems()))
-    if isinstance(o, collections.Set):
-        return _freeze(set(f(e) for e in o))
-    if isinstance(o, collections.Sequence):
-        return _freeze(list(f(e) for e in o))
-    if hasattr(o, '__dict__'):
-        mutables = get_mutable_attributes(o)
-        # Freeze all immutable attributes. Can't freeze the dict, but it will
-        # be returned frozen by _Frozen.__getattribute__
-        if isinstance(o, Validator):
-            pass
-        for k, v in o.__dict__.iteritems():
-            if k not in mutables:
-                o.__dict__[k] = f(v)
-    memo[_id] = _freeze(o)
+        frozen = Array(o)
+    elif isinstance(o, collections.Mapping):
+        frozen = frozendict((f(k), f(v)) for k, v in o.iteritems())
+    elif isinstance(o, collections.Set):
+        frozen = frozenset(f(e) for e in o)
+    elif isinstance(o, collections.Sequence):
+        frozen = tuple(f(e) for e in o)
+    else:
+        frozen = _Frozen(o)
+    memo[_id] = frozen
+    return frozen
     if LOGFREEZE:
         logging.debug('Exiting deepfreeze: ' + repr((o, memo)))
     return memo[_id]

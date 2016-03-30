@@ -5,9 +5,9 @@ from numpy.random import RandomState
 
 from gpmcc.dists.distribution import DistributionGpm
 
-from util.immutable import Immutable
+from util import immutable
 
-class TestDistribution(Immutable, DistributionGpm):
+class TestDistribution(immutable.Immutable, DistributionGpm):
 
     "Base distribution for test classes"
 

@@ -6,8 +6,6 @@ from bayeslite import bayesdb
 from bayeslite.metamodel import bayesdb_register_metamodel as register
 from bayeslite.metamodel import builtin_metamodels as models
 
-reload(bayesdb)
-
 class BayesDB(bayesdb.BayesDB):
 
     "A pickleable and copyable bdb"
@@ -55,5 +53,6 @@ class BayesDB(bayesdb.BayesDB):
         del self.metamodels, self.db
 
 def bayesdb_open(*args, **kw):
-    rv = bayesdb.bayesdb_open(*args, **dict(kw, bdbclass=BayesDB))
+    bdbclass = kw.get('bdbclass', BayesDB)
+    rv = bayesdb.bayesdb_open(*args, **dict(kw, bdbclass=bdbclass))
     return rv

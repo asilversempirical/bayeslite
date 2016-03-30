@@ -151,6 +151,9 @@ class Immutable(object):
         # Return positional args + kwargs
         return args + self.__initial_values__[1].items()
 
+    def __freeze_initial_values__(self, args):
+        return freeze.deepfreeze(args)
+
     def __repr__(self):
         args = self.__get_init_args__()
         return '%s(%s)' % (self.__class__.__name__,
@@ -166,13 +169,30 @@ class Array(Immutable, np.ndarray):
         # For an explanation of how this works, see the output of this command:
         # "help(np.doc.subclassing)".  Briefly, you have to convert a raw numpy
         # array in __new__ rather than create it in __init__.
-        rv = np.asarray(input_array).copy().view(Array)
+        rv = np.asarray(input_array).copy()
+        initial_type = type(rv)
+        rv = rv.view(Array)
         # Override immutability to record type of initial array
-        object.__setattr__(rv, '__initial_type__', type(input_array))
+        object.__setattr__(rv, '__initial_type__', initial_type)
         return rv
 
+    def __array_finalize__(self, obj):
+        if not getattr(self, '__instance_initialized__', False):
+            # numpy took us through a different initialization path. Get back
+            # on track.
+            self.__initial_type__ = type(obj)
+            Array.__initialize_instance__(self, (obj,), {})
+
     def __get_init_args__(self):
-        return [('input_array', self.view(self.__initial_type__))]
+        aitype = self.__initial_type__
+        # Just show a regular array, not an immutable one. Otherwise we go into
+        # an infinite regress in __repr__.
+        itype = aitype if aitype != Array else np.ndarray
+        return [('input_array', self.view(itype))]
+
+    def __freeze_initial_values__(self, (args, kw)):
+        assert len(args) == 1
+        return (self, freeze.deepfreeze(kw))
 
     def __compute_special_hash__(self):
         # Arrays are unhashable, so need to pull its data in hashable format.
@@ -195,3 +215,6 @@ class Array(Immutable, np.ndarray):
 # Register these as types which do not need further freezing by
 # freeze.deepfreeze.
 freeze.frozen_types += (Immutable, Array)
+
+# Break the circular dependency between this and freeze.py
+freeze.Array = Array
