@@ -1,8 +1,10 @@
 '''Parser for tokenized crosscat generator expressions.'''
 
 import collections
+import numbers
+import types
 
-from bayeslite.exception import BQLError
+from bayeslite.exception import BQLError, BQLParseError
 from bayeslite.util import casefold
 
 # guess is bool. subsample is False or an int. columns is a list of pairs
@@ -11,8 +13,7 @@ from bayeslite.util import casefold
 # they're dependent or independent.
 GeneratorSchema = collections.namedtuple(
     'GeneratorSchema',
-    ['guess', 'subsample', 'columns', 'dep_constraints'])
-
+    ['guess', 'columns', 'dep_constraints', 'subsample', 'subsample_seed'])
 
 def parse(schema, subsample_default):
     '''Parses a generator schema as passed to CrosscatMetamodel.
@@ -29,6 +30,7 @@ def parse(schema, subsample_default):
 
     guess = False
     subsample = subsample_default
+    subsample_seed = None
     columns = []
     dep_constraints = []
     for directive in schema:
@@ -52,9 +54,8 @@ def parse(schema, subsample_default):
         op = casefold(directive[0])
         if op == 'guess' and directive[1] == ['*']:
             guess = True
-        elif (op == 'subsample' and isinstance(directive[1], list) and
-                len(directive[1]) == 1):
-            subsample = _parse_subsample_clause(directive[1][0])
+        elif op == 'subsample':
+            subsample, subsample_seed = _parse_subsample_clause(*directive[1])
         elif op == 'dependent':
             constraint = (_parse_dependent_clause(directive[1]), True)
             dep_constraints.append(constraint)
@@ -66,18 +67,30 @@ def parse(schema, subsample_default):
         else:
             raise BQLError(
                 None, 'Invalid crosscat column model: %r' % (directive),)
-    return GeneratorSchema(
-        guess=guess, subsample=subsample, columns=columns,
-        dep_constraints=dep_constraints)
+    return GeneratorSchema(guess=guess, columns=columns,
+        dep_constraints=dep_constraints,
+        subsample=subsample, subsample_seed=subsample_seed)
 
 
-def _parse_subsample_clause(clause):
-    if isinstance(clause, basestring) and casefold(clause) == 'off':
-        return False
-    elif isinstance(clause, int):
-        return clause
-    else:
-        raise BQLError(None, 'Invalid subsampling: %r' % (clause,))
+# Use argument destructuring to parse directive
+def _parse_subsample_clause(off_or_size, comma=None, seed=None, *rest):
+    args = (off_or_size, comma, seed) + rest
+    if rest != ():  # Implies more than 2 arguments were given
+        raise BQLError(None, ('subsample takes 1 or 2 arguments: '
+                              'subsample size or "off" and (optionally) random'
+                              ' seed: %r' % args))
+    if (comma is not None) and (comma != ','):
+        raise BQLParseError('Expected a comma, or nothing.')
+    if casefold(off_or_size) == 'off':
+        if seed is not None:
+            raise BQLError(None, ('Subsample seed only makes sense when '
+                                  'subsampling is enabled: %r' % args))
+        return False, None
+    if not (isinstance(off_or_size, numbers.Integral) and
+            isinstance(seed, (types.NoneType, numbers.Integral))):
+        raise BQLError(None, ('Either pass "off" to subsample, or one or two '
+                              'integers'))
+    return off_or_size, seed
 
 
 def _parse_dependent_clause(args):

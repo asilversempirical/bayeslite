@@ -41,7 +41,7 @@ def test_subsample():
         ''')
         bdb.execute('''
             CREATE GENERATOR dhacc FOR dha USING crosscat (
-                SUBSAMPLE(100),
+                SUBSAMPLE(100, 5),
                 GUESS(*),
                 name KEY
             )

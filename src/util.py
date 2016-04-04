@@ -17,6 +17,7 @@
 """Miscellaneous utilities."""
 
 import math
+import numbers
 
 def unique(array):
     """Return a sorted array of the unique elements in `array`.
@@ -73,9 +74,10 @@ def float_sum(iterable):
         s = s1
     return s + c
 
-def casefold(string):
+def casefold(maybe_string):
+    isstring = isinstance(maybe_string, basestring)
     # XXX Not really right, but it'll do for now.
-    return string.upper().lower()
+    return maybe_string.upper().lower() if isstring else maybe_string
 
 def cursor_value(cursor):
     try:
@@ -93,3 +95,19 @@ def cursor_value(cursor):
     if 1 < len(row):
         raise ValueError('Excessive cursor result')
     return row[0]
+
+extract_mask = 2**32 - 1
+
+def extract_ints(bignum):
+    """Return a list of unsigned 32-bit integers corresponding to the 32-bit words
+    in `bignum`. Useful for initializing a numpy.random.RandomState, which can
+    take such a list as the seed.
+
+    """
+    if (bignum < 0) or (not isinstance(bignum, numbers.Integral)):
+        raise ValueError('Non-negative integer required')
+    rv = []
+    while bignum > 0:
+        rv.append(bignum & extract_mask)
+        bignum >>= 5
+    return rv

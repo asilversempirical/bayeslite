@@ -26,13 +26,13 @@ import apsw
 import itertools
 import json
 import math
+from numpy.random import RandomState
 import struct
 import time
 
 import bayeslite.core as core
 import bayeslite.guess as guess
 import bayeslite.metamodel as metamodel
-import bayeslite.weakprng as weakprng
 import crosscat_generator_schema
 import crosscat_theta_validator
 
@@ -41,6 +41,7 @@ from bayeslite.sqlite3_util import sqlite3_quote_name
 from bayeslite.stats import arithmetic_mean
 from bayeslite.util import casefold
 from bayeslite.util import cursor_value
+from bayeslite.util import extract_ints
 
 crosscat_schema_1 = '''
 INSERT INTO bayesdb_metamodel (name, version) VALUES ('crosscat', 1);
@@ -652,8 +653,8 @@ class CrosscatMetamodel(metamodel.IBayesDBMetamodel):
                 n = cursor_value(bdb.sql_execute(sql))
                 sql = 'SELECT _rowid_ FROM %s ORDER BY _rowid_ ASC' % (qt,)
                 cursor = bdb.sql_execute(sql)
-                seed = struct.pack('<QQQQ', 0, 0, k, n)
-                uniform = weakprng.weakprng(seed).weakrandom_uniform
+                seed = parsed_schema.subsample_seed or 0
+                uniform = RandomState(extract_ints(seed)).randint
                 # https://en.wikipedia.org/wiki/Reservoir_sampling
                 samples = []
                 for i, row in enumerate(cursor):
