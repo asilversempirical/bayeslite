@@ -26,6 +26,8 @@
 # SUCH DAMAGE.
 
 import chacha
+import numbers
+import numpy
 import os
 import struct
 import threading
@@ -114,7 +116,28 @@ class WeakPRNG(object):
         self.weakrandom_bytearray(buf, 0, n)
         return bytes(buf)
 
+twos_complement_bit = 2**64 - 1
+
 def weakprng(seed):
+    if isinstance(seed, numbers.Integral):
+        # Convert number to 32-byte little-endian representation, first by
+        # representing its absolute value as 4 longs, then adding turning on
+        # twos-complement in the highest bit if it's negative with absolute
+        # value less than 2**256, and finally packing those longs together in a
+        # string.
+        seedsign = numpy.sign(seed)
+        seed = abs(seed)
+        longs = []
+        while (seed > 0) and (len(longs) < 4):
+            longs.append(seed & (2**64 - 1))
+            seed >>= 64
+        # Zero-pad to make sure we have a full 256-bit representation
+        longs.extend((4 - len(longs)) * [0])
+        if (seed == 0) and (seedsign == -1):
+            # The number fits into 256 bits, so might as well include the sign
+            # information as well
+            longs[0] |= twos_complement_bit
+        seed = struct.pack('QQQQ', *longs)
     return WeakPRNG(seed)
 
 if weakprng(bytes(bytearray([0] * 32))).weakrandom64() != 0x42fe0c0eb8fd7b38:
