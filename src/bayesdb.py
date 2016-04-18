@@ -33,7 +33,7 @@ from bayeslite.util import cursor_value
 bayesdb_open_cookie = 0xed63e2c26d621a5b5146a334849d43f0
 
 def bayesdb_open(pathname=None, builtin_metamodels=None, seed=None,
-        version=None, compatible=None):
+                 version=None, compatible=None, bdbclass=None):
     """Open the BayesDB in the file at `pathname`.
 
     If there is no file at `pathname`, it is automatically created.
@@ -52,8 +52,9 @@ def bayesdb_open(pathname=None, builtin_metamodels=None, seed=None,
     """
     if builtin_metamodels is None:
         builtin_metamodels = True
-    bdb = BayesDB(bayesdb_open_cookie, pathname=pathname, seed=seed,
-        version=version, compatible=compatible)
+    bdbclass = bdbclass or BayesDB
+    bdb = bdbclass(bayesdb_open_cookie, pathname=pathname,
+        seed=seed, version=version, compatible=compatible)
     if builtin_metamodels:
         metamodel.bayesdb_register_builtin_metamodels(bdb)
     return bdb
@@ -85,13 +86,7 @@ class BayesDB(object):
         self.cache = None
         self.temptable = 0
         self.qid = 0
-        if seed is None:
-            seed = struct.pack('<QQQQ', 0, 0, 0, 0)
-        self._prng = weakprng.weakprng(seed)
-        pyrseed = self._prng.weakrandom32()
-        self._py_prng = random.Random(pyrseed)
-        nprseed = [self._prng.weakrandom32() for _ in range(4)]
-        self._np_prng = numpy.random.RandomState(nprseed)
+        self.seed(seed)
         schema.bayesdb_install_schema(self, version=version,
             compatible=compatible)
         bqlfn.bayesdb_install_bql(self._sqlite3, self)
@@ -100,6 +95,15 @@ class BayesDB(object):
         empty_cursor = self._sqlite3.cursor()
         empty_cursor.execute('')
         self._empty_cursor = bql.BayesDBCursor(self, empty_cursor)
+
+    def seed(self, seed):
+        if seed is None:
+            seed = struct.pack('<QQQQ', 0, 0, 0, 0)
+        self._prng = weakprng.weakprng(seed)
+        pyrseed = self._prng.weakrandom64()
+        self._py_prng = random.Random(pyrseed)
+        nprseed = [self._prng.weakrandom32() for _ in range(4)]
+        self._np_prng = numpy.random.RandomState(nprseed)
 
     def __enter__(self):
         return self
