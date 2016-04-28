@@ -136,7 +136,8 @@ class TestThreshold(namedtuple('TestThreshold', test_threshold_fields)):
         """
 
 
-def compute_sufficiently_stringent_threshold(generator, ns, maxprob):
+def compute_sufficiently_stringent_threshold(generator, ns, maxprob,
+                                             verbose=False):
     """Compute a failure threshold for return values of `generator`.
 
     `generator`: A function which takes no arguments and returns a float. Its
@@ -161,6 +162,8 @@ def compute_sufficiently_stringent_threshold(generator, ns, maxprob):
         probfail, x = failprob_threshold(observed, ns, 0.9 * maxprob)
         if probfail < maxprob:
             return TestThreshold(x, probfail, len(observed))
+        if verbose:
+            print TestThreshold(x, probfail, len(observed))
 
 
 class MultipleTestStatisticFailures(RuntimeError):

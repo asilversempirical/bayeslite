@@ -6,6 +6,7 @@ from math import erfc
 import numpy as np
 from numpy.random import RandomState
 
+from gaussian import gaussian_log_pdf
 import kl
 import threshold
 
@@ -14,13 +15,6 @@ def gaussian_kl_divergence(mu1, s1, mu2, s2):
     "Return KL(N(mu1,s1)||N(mu2,s2))"
     # http://stats.stackexchange.com/a/7443/40686
     return np.log(s2 / s1) + ((s1**2 + (mu1 - mu2)**2) / (2 * s2**2)) - 0.5
-
-
-def gaussian_log_pdf(mu, s):
-    def lpdf(x):
-        normalizing_constant = -(np.log(2 * np.pi) / 2) - np.log(s)
-        return normalizing_constant - ((x - mu)**2 / (2 * s**2))
-    return lpdf
 
 
 def compute_kullback_leibler_check_statistic(n=100, prngstate=None):
