@@ -206,6 +206,7 @@ setup(
     ],
     tests_require=[
         'flaky',
+        'hypothesis',
         'pandas',
         'pexpect',
         'pytest',
