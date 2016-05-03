@@ -12,7 +12,6 @@ numchains chains for numiterations iterations.
 
 import numpy as np
 import random
-import re
 import struct
 
 from bayeslite.bayesdb import bayesdb_open
